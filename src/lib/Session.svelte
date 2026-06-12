@@ -572,6 +572,32 @@
     });
   }
 
+  // Add an editable sticky note to the board.
+  function addNote() {
+    if (hasWriteAccess === false) return;
+    const [x, y] = nextBoardPos();
+    const item: BoardItem = {
+      id: crypto.randomUUID(),
+      kind: "note",
+      x,
+      y,
+      w: 220,
+      h: 160,
+      dataUrl: "", // note text lives in dataUrl
+    };
+    upsertBoardItem(item);
+    srocket?.send({ boardPut: item });
+  }
+
+  // Persist a note's edited text to peers.
+  function handleNoteEdit(id: string, text: string) {
+    const item = boardItems.find((it) => it.id === id);
+    if (!item) return;
+    const updated = { ...item, dataUrl: text };
+    upsertBoardItem(updated);
+    srocket?.send({ boardPut: updated });
+  }
+
   function handleImage() {
     const input = document.createElement("input");
     input.type = "file";
@@ -786,6 +812,7 @@
       {cameraActive}
       on:create={handleCreate}
       on:tile={tileWindows}
+      on:note={addNote}
       on:chat={() => {
         showChat = !showChat;
         newMessages = false;
@@ -906,6 +933,7 @@
       on:move={({ detail }) =>
         handleBoardMove(detail.id, detail.x, detail.y)}
       on:delete={({ detail }) => handleBoardDelete(detail)}
+      on:edit={({ detail }) => handleNoteEdit(detail.id, detail.text)}
     />
 
     {#each shells as [id, winsize] (id)}

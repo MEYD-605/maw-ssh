@@ -2,6 +2,7 @@
   import { createEventDispatcher } from "svelte";
   import StatusBar from "./StatusBar.svelte";
   import {
+    FileTextIcon,
     GridIcon,
     ImageIcon,
     MessageSquareIcon,
@@ -23,6 +24,7 @@
   const dispatch = createEventDispatcher<{
     create: void;
     tile: void;
+    note: void;
     chat: void;
     settings: void;
     networkInfo: void;
@@ -98,6 +100,14 @@
         title="Add image to board"
       >
         <ImageIcon strokeWidth={1.5} class="p-0.5" />
+      </button>
+      <button
+        class="icon-button"
+        on:click={() => dispatch("note")}
+        disabled={!connected || hasWriteAccess === false}
+        title="Add sticky note"
+      >
+        <FileTextIcon strokeWidth={1.5} class="p-0.5" />
       </button>
       <button
         class="icon-button"

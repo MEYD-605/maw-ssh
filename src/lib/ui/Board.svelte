@@ -26,6 +26,7 @@
   const dispatch = createEventDispatcher<{
     move: { id: string; x: number; y: number };
     delete: string;
+    edit: { id: string; text: string };
   }>();
 
   // Drag state. While dragging, the dragged tile renders at `dragPos` and sends
@@ -143,14 +144,31 @@
     <div
       class="board-item"
       class:is-stream={item.kind === "stream"}
+      class:is-note={item.kind === "note"}
       style:width="{item.w}px"
       on:pointerdown={(event) => onPointerDown(event, item)}
     >
-      <img
-        src={streamSrcs[item.id] ?? item.dataUrl}
-        alt={item.kind === "stream" ? "screen share" : "shared image"}
-        draggable="false"
-      />
+      {#if item.kind === "note"}
+        <textarea
+          class="note-text"
+          style:height="{item.h}px"
+          placeholder="Type a note…"
+          value={item.dataUrl}
+          readonly={hasWriteAccess === false}
+          on:pointerdown={(event) => event.stopPropagation()}
+          on:input={(event) =>
+            dispatch("edit", {
+              id: item.id,
+              text: event.currentTarget.value,
+            })}
+        />
+      {:else}
+        <img
+          src={streamSrcs[item.id] ?? item.dataUrl}
+          alt={item.kind === "stream" ? "screen share" : "shared image"}
+          draggable="false"
+        />
+      {/if}
 
       {#if item.kind === "stream"}
         <div class="live-tag">● LIVE</div>
@@ -182,6 +200,16 @@
 
   .board-item.is-stream {
     @apply ring-2 ring-red-500/70;
+  }
+
+  .board-item.is-note {
+    @apply bg-amber-200 ring-amber-300/60 shadow-amber-900/30;
+  }
+
+  .note-text {
+    @apply block w-full p-3 bg-transparent resize-none outline-none border-0;
+    @apply text-sm text-amber-950 placeholder-amber-700/50 font-medium leading-snug;
+    cursor: text;
   }
 
   .board-item img {
