@@ -4,7 +4,6 @@
     ImageIcon,
     MessageSquareIcon,
     MicIcon,
-    MonitorIcon,
     PlusCircleIcon,
     SettingsIcon,
     TerminalIcon,
@@ -85,15 +84,6 @@
         title="Add image to board"
       >
         <ImageIcon strokeWidth={1.5} class="p-0.5" />
-      </button>
-      <button
-        class="icon-button"
-        class:active={streamActive}
-        on:click={() => dispatch("stream")}
-        disabled={!connected || hasWriteAccess === false}
-        title={streamActive ? "Stop screen share" : "Share screen"}
-      >
-        <MonitorIcon strokeWidth={1.5} class="p-0.5" />
       </button>
       <button
         class="icon-button"
