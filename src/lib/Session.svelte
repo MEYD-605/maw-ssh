@@ -1029,6 +1029,24 @@
     {/if}
   </div>
 
+  <!--
+    Faint peek-handle: when the auto-hiding toolbar is tucked away, a soft pill
+    stays pinned to the very top edge so you always know where it lives — tap or
+    hover it to bring the toolbar back. Fades out while the toolbar is showing.
+  -->
+  <button
+    class="absolute top-0 left-1/2 -translate-x-1/2 z-20 w-20 h-6 flex items-center justify-center cursor-pointer group transition-opacity duration-300 ease-out"
+    class:opacity-0={toolbarVisible}
+    class:pointer-events-none={toolbarVisible}
+    on:pointerenter={showToolbar}
+    on:click={showToolbar}
+    aria-label="Show toolbar"
+  >
+    <span
+      class="w-9 h-1 rounded-full bg-white/25 group-hover:w-12 group-hover:bg-white/60 transition-all duration-200"
+    />
+  </button>
+
   {#if showChat}
     <div
       class="absolute flex flex-col justify-end inset-y-4 right-4 w-80 pointer-events-none z-10"
