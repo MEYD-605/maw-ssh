@@ -55,9 +55,18 @@
     expand: void;
     bringToFront: void;
     startMove: MouseEvent;
+    preset: { cols: number; rows: number };
     focus: void;
     blur: void;
   }>();
+
+  // Quick terminal size presets (cols × rows).
+  const SIZE_PRESETS = [
+    { label: "S", cols: 80, rows: 24 },
+    { label: "M", cols: 100, rows: 30 },
+    { label: "L", cols: 120, rows: 40 },
+    { label: "XL", cols: 160, rows: 48 },
+  ];
 
   const typeahead = new TypeAheadAddon();
 
@@ -250,7 +259,22 @@
     >
       {currentTitle}
     </div>
-    <div class="flex-1" />
+    <div class="flex-1 flex items-center justify-end pr-3 gap-1">
+      {#each SIZE_PRESETS as p}
+        <button
+          class="size-preset"
+          class:active={cols === p.cols && rows === p.rows}
+          title={`Resize terminal to ${p.cols}×${p.rows}`}
+          on:mousedown={(event) => {
+            if (event.button !== 0) return;
+            event.stopPropagation();
+            dispatch("preset", { cols: p.cols, rows: p.rows });
+          }}
+        >
+          {p.label}
+        </button>
+      {/each}
+    </div>
   </div>
   <div
     class="inline-block px-4 py-2 transition-opacity duration-500"
@@ -270,6 +294,15 @@
   .term-container {
     @apply inline-block rounded-lg border border-zinc-700 opacity-90;
     transition: transform 200ms, opacity 200ms;
+  }
+
+  .size-preset {
+    @apply rounded-md px-1.5 py-0.5 text-xs font-medium text-zinc-400;
+    @apply hover:bg-zinc-700/60 hover:text-zinc-100 transition-colors;
+  }
+
+  .size-preset.active {
+    @apply bg-indigo-600/80 text-white;
   }
 
   .term-container:not(.focused) :global(.xterm) {

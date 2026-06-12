@@ -905,6 +905,12 @@
             const cols = ws.cols + 10;
             srocket?.send({ move: [id, { ...ws, rows, cols }] });
           }}
+          on:preset={({ detail: { cols, rows } }) => {
+            if (!hasWriteAccess) return;
+            const r = Math.max(rows, TERM_MIN_ROWS);
+            const c = Math.max(cols, TERM_MIN_COLS);
+            srocket?.send({ move: [id, { ...ws, rows: r, cols: c }] });
+          }}
           on:bringToFront={() => {
             if (!hasWriteAccess) return;
             showNetworkInfo = false;
