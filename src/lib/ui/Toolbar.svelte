@@ -138,11 +138,9 @@
         class="icon-button"
         class:lock-on={boardLocked}
         on:click={() => dispatch("lock")}
-        disabled={!connected || hasWriteAccess === false || lockedForMe}
+        disabled={!connected || hasWriteAccess === false}
         title={boardLocked
-          ? lockedForMe
-            ? "Board is locked by someone else"
-            : "Board locked — click to unlock"
+          ? "Board locked — click to unlock"
           : "Lock the board (others become read-only)"}
       >
         {#if boardLocked}

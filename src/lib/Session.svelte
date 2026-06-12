@@ -698,13 +698,8 @@
       });
       return;
     }
-    if (boardLocked && lockedForMe) {
-      makeToast({
-        kind: "info",
-        message: `Board is locked by ${boardLock.ownerName ?? "someone"}.`,
-      });
-      return;
-    }
+    // Soft lock is cooperative: anyone with write access can lock OR unlock, so
+    // the board never gets stuck if the locker leaves. Ownership is just a label.
     const nowLocked = !boardLocked;
     const item: BoardItem = {
       id: LOCK_ID,
