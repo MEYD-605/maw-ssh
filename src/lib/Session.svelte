@@ -82,6 +82,29 @@
   let settingsOpen = false; // @hmr:keep
   let showExplorer = false; // @hmr:keep
   let showDoc = false; // @hmr:keep
+
+  // Auto-hiding toolbar (Apple menu-bar style): fades out after inactivity,
+  // reveals when the pointer nears the top edge or hovers it.
+  let toolbarVisible = true;
+  let toolbarHideTimer: ReturnType<typeof setTimeout>;
+  function showToolbar() {
+    toolbarVisible = true;
+    clearTimeout(toolbarHideTimer);
+    toolbarHideTimer = setTimeout(() => (toolbarVisible = false), 3000);
+  }
+  onMount(() => {
+    const onMove = (e: PointerEvent) => {
+      if (e.clientY < 96) showToolbar();
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerdown", onMove);
+    showToolbar(); // visible on load, then auto-hide
+    return () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerdown", onMove);
+      clearTimeout(toolbarHideTimer);
+    };
+  });
   let showNetworkInfo = false; // @hmr:keep
 
   onMount(() => {
@@ -925,7 +948,10 @@
   on:wheel={(event) => event.preventDefault()}
 >
   <div
-    class="absolute top-8 inset-x-0 flex justify-center pointer-events-none z-10"
+    class="absolute top-8 inset-x-0 flex justify-center pointer-events-none z-10 transition-all duration-300 ease-out"
+    class:opacity-0={!toolbarVisible}
+    class:-translate-y-[150%]={!toolbarVisible}
+    on:pointerenter={showToolbar}
   >
     <Toolbar
       {connected}

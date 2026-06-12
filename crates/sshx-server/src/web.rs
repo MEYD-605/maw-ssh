@@ -10,6 +10,7 @@ use axum::routing::{any, get, get_service};
 use axum::Router;
 use http::StatusCode;
 use tower_http::services::{ServeDir, ServeFile};
+use tower_http::set_header::SetResponseHeaderLayer;
 
 use crate::ServerState;
 
@@ -30,7 +31,8 @@ pub fn app() -> Router<Arc<ServerState>> {
 
     // Serve hashed build assets WITHOUT the SPA fallback, so a stale client
     // requesting a removed /_app/immutable/* hash gets a 404 (and hard-reloads)
-    // instead of SPA HTML served as a JS module (strict-MIME error).
+    // instead of SPA HTML served as a JS module (strict-MIME error). These are
+    // content-hashed → cache them forever.
     let app_assets = ServeDir::new("build/_app")
         .precompressed_gzip()
         .precompressed_br();
@@ -38,8 +40,21 @@ pub fn app() -> Router<Arc<ServerState>> {
     Router::new()
         .route("/go", get(go_redirect))
         .nest("/api", backend())
-        .nest_service("/_app", get_service(app_assets))
-        .fallback_service(get_service(static_files))
+        .nest_service(
+            "/_app",
+            get_service(app_assets).layer(SetResponseHeaderLayer::overriding(
+                http::header::CACHE_CONTROL,
+                http::HeaderValue::from_static("public, max-age=31536000, immutable"),
+            )),
+        )
+        // Everything else (the SPA HTML) must revalidate so a new deploy is
+        // picked up without a manual hard-refresh.
+        .fallback_service(get_service(static_files).layer(
+            SetResponseHeaderLayer::overriding(
+                http::header::CACHE_CONTROL,
+                http::HeaderValue::from_static("no-cache"),
+            ),
+        ))
 }
 
 async fn go_redirect() -> Response {
