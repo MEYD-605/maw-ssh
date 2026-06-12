@@ -231,8 +231,14 @@
   on:pointerdown={(event) => event.stopPropagation()}
 >
   <div
-    class="flex select-none"
-    on:mousedown={(event) => dispatch("startMove", event)}
+    class="flex select-none touch-none"
+    on:pointerdown={(event) => {
+      // Ignore taps on the control buttons (close/shrink/expand/presets) so
+      // they fire their own action instead of starting a window drag.
+      if ((event.target instanceof HTMLElement) && event.target.closest("button"))
+        return;
+      dispatch("startMove", event);
+    }}
   >
     <div class="flex-1 flex items-center px-3">
       <CircleButtons>
@@ -265,7 +271,7 @@
           class="size-preset"
           class:active={cols === p.cols && rows === p.rows}
           title={`Resize terminal to ${p.cols}×${p.rows}`}
-          on:mousedown={(event) => {
+          on:pointerdown={(event) => {
             if (event.button !== 0) return;
             event.stopPropagation();
             dispatch("preset", { cols: p.cols, rows: p.rows });

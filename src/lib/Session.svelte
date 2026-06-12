@@ -519,19 +519,21 @@
         resizing = -1;
       }
 
-      if (event.type === "mouseleave") {
+      if (event.type === "pointerleave") {
         sendCursor.cancel();
         srocket?.send({ setCursor: null });
       }
     }
 
-    window.addEventListener("mousemove", handleMouse);
-    window.addEventListener("mouseup", handleMouseEnd);
-    document.body.addEventListener("mouseleave", handleMouseEnd);
+    // Pointer events cover mouse, touch, and pen — so terminal move/resize
+    // works on mobile (touch) as well as desktop.
+    window.addEventListener("pointermove", handleMouse);
+    window.addEventListener("pointerup", handleMouseEnd);
+    document.body.addEventListener("pointerleave", handleMouseEnd);
     return () => {
-      window.removeEventListener("mousemove", handleMouse);
-      window.removeEventListener("mouseup", handleMouseEnd);
-      document.body.removeEventListener("mouseleave", handleMouseEnd);
+      window.removeEventListener("pointermove", handleMouse);
+      window.removeEventListener("pointerup", handleMouseEnd);
+      document.body.removeEventListener("pointerleave", handleMouseEnd);
     };
   });
 
@@ -947,10 +949,11 @@
           />
         </div>
 
-        <!-- Interactable element for resizing -->
+        <!-- Interactable element for resizing (mouse + touch via pointer events) -->
         <div
-          class="absolute w-5 h-5 -bottom-1 -right-1 cursor-nwse-resize"
-          on:mousedown={(event) => {
+          class="absolute w-5 h-5 -bottom-1 -right-1 cursor-nwse-resize touch-none"
+          on:pointerdown={(event) => {
+            event.stopPropagation();
             const canvasEl = termElements[id].querySelector(".xterm-screen");
             if (canvasEl) {
               resizing = id;
@@ -960,7 +963,6 @@
               resizingSize = ws;
             }
           }}
-          on:pointerdown={(event) => event.stopPropagation()}
         />
       </div>
     {/each}
