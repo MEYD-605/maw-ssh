@@ -850,9 +850,6 @@
     const n = shells.length;
     if (n === 0) return;
 
-    const COLS = 90;
-    const ROWS = 40;
-
     let nCols: number;
     if (typeof mode === "number") nCols = Math.max(1, Math.min(mode, n));
     else if (mode === "rows") nCols = 1;
@@ -882,17 +879,51 @@
     const CHROME_W = 36; // borders + horizontal padding (world px)
     const CHROME_H = 60; // title bar + vertical padding (world px)
     const GAP = 48;
-    const TERM_W = COLS * cellW + CHROME_W + GAP;
-    const TERM_H = ROWS * cellH + CHROME_H + GAP;
-    const gridW = nCols * TERM_W;
-    const gridH = nRows * TERM_H;
 
-    shells.forEach(([id, ws], i) => {
+    // Keep each terminal's OWN size — if the user resized a window, honour it
+    // instead of snapping back to the default ROWS×COLS. We only reposition.
+    // Box = the terminal's real world footprint derived from its rows/cols.
+    const boxes = shells.map(([id, ws]) => ({
+      id,
+      ws,
+      w: ws.cols * cellW + CHROME_W,
+      h: ws.rows * cellH + CHROME_H,
+    }));
+
+    // Per-column width and per-row height = the largest terminal in that
+    // column/row, so variable-size windows line up cleanly and never overlap.
+    const colW = new Array(nCols).fill(0);
+    const rowH = new Array(nRows).fill(0);
+    boxes.forEach((b, i) => {
       const col = i % nCols;
       const row = Math.floor(i / nCols);
-      const x = Math.round(-gridW / 2 + col * TERM_W);
-      const y = Math.round(-gridH / 2 + row * TERM_H);
-      srocket?.send({ move: [id, { ...ws, x, y, rows: ROWS, cols: COLS }] });
+      colW[col] = Math.max(colW[col], b.w);
+      rowH[row] = Math.max(rowH[row], b.h);
+    });
+
+    // Cumulative offsets (each track + a gap after it).
+    const colX = new Array(nCols);
+    const rowY = new Array(nRows);
+    let accX = 0;
+    for (let c = 0; c < nCols; c++) {
+      colX[c] = accX;
+      accX += colW[c] + GAP;
+    }
+    let accY = 0;
+    for (let r = 0; r < nRows; r++) {
+      rowY[r] = accY;
+      accY += rowH[r] + GAP;
+    }
+    const gridW = Math.max(0, accX - GAP);
+    const gridH = Math.max(0, accY - GAP);
+
+    boxes.forEach((b, i) => {
+      const col = i % nCols;
+      const row = Math.floor(i / nCols);
+      const x = Math.round(-gridW / 2 + colX[col]);
+      const y = Math.round(-gridH / 2 + rowY[row]);
+      // Preserve rows/cols — only the position changes.
+      srocket?.send({ move: [b.id, { ...b.ws, x, y }] });
     });
     // Recenter + zoom so the whole grid (centered on origin) fits. touchZoom
     // owns center/zoom, so assigning them directly would get overwritten.
