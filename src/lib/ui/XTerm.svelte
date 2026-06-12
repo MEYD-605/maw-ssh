@@ -58,6 +58,7 @@
     preset: { cols: number; rows: number };
     focus: void;
     blur: void;
+    rename: string;
   }>();
 
   // Quick terminal size presets (cols × rows).
@@ -72,6 +73,21 @@
 
   export let rows: number, cols: number;
   export let write: (data: string) => void; // bound function prop
+  export let label = ""; // user-set terminal name, synced across peers
+  export let canRename = true;
+
+  let renaming = false;
+  let draftLabel = "";
+  function startRename() {
+    if (!canRename) return;
+    draftLabel = label;
+    renaming = true;
+  }
+  function commitRename() {
+    if (!renaming) return;
+    renaming = false;
+    dispatch("rename", draftLabel.trim());
+  }
 
   export let termEl: HTMLDivElement = null as any; // suppress "missing prop" warning
   let term: Terminal | null = null;
@@ -261,9 +277,32 @@
       </CircleButtons>
     </div>
     <div
-      class="p-2 text-sm text-zinc-300 text-center font-medium overflow-hidden whitespace-nowrap text-ellipsis w-0 flex-grow-[4]"
+      class="p-2 text-sm text-center font-medium overflow-hidden whitespace-nowrap text-ellipsis w-0 flex-grow-[4]"
     >
-      {currentTitle}
+      {#if renaming}
+        <!-- svelte-ignore a11y-autofocus -->
+        <input
+          class="w-full bg-zinc-900 text-zinc-100 text-center rounded px-1 outline-none ring-1 ring-indigo-500"
+          bind:value={draftLabel}
+          autofocus
+          spellcheck="false"
+          placeholder="name this terminal…"
+          on:pointerdown={(e) => e.stopPropagation()}
+          on:blur={commitRename}
+          on:keydown={(e) => {
+            if (e.key === "Enter") commitRename();
+            else if (e.key === "Escape") renaming = false;
+          }}
+        />
+      {:else}
+        <button
+          class="w-full truncate {label ? 'text-indigo-300' : 'text-zinc-300'} hover:text-white"
+          title={canRename ? "Click to rename" : currentTitle}
+          on:click={startRename}
+        >
+          {label || currentTitle}
+        </button>
+      {/if}
     </div>
     <div class="flex-1 flex items-center justify-end pr-3 gap-1">
       {#each SIZE_PRESETS as p}

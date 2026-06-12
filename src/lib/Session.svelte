@@ -500,6 +500,41 @@
     routeInput(target, new TextEncoder().encode(text));
   }
 
+  // ── Terminal labels (Bo 2026-06-13) ───────────────────────────────────────
+  // Per-shell names synced to all peers via board items (kind:"label",
+  // id "__label_<sid>"). Makes a multi-server board legible — and broadcast safe.
+  $: labels = (() => {
+    const m: Record<number, string> = {};
+    for (const it of boardItems) {
+      if (it.kind === "label" && it.id.startsWith("__label_")) {
+        const sid = Number(it.id.slice("__label_".length));
+        if (!Number.isNaN(sid)) m[sid] = it.dataUrl;
+      }
+    }
+    return m;
+  })();
+
+  function handleRename(id: number, text: string) {
+    if (!canEdit) return;
+    const itemId = `__label_${id}`;
+    if (!text) {
+      removeBoardItem(itemId);
+      srocket?.send({ boardDelete: itemId });
+      return;
+    }
+    const item: BoardItem = {
+      id: itemId,
+      kind: "label",
+      x: 0,
+      y: 0,
+      w: 0,
+      h: 0,
+      dataUrl: text,
+    };
+    upsertBoardItem(item);
+    srocket?.send({ boardPut: item });
+  }
+
   // Stupid hack to preserve input focus when terminals are reordered.
   // See: https://github.com/sveltejs/svelte/issues/3973
   let activeElement: Element | null = null;
@@ -1300,6 +1335,9 @@
           cols={ws.cols}
           bind:write={writers[id]}
           bind:termEl={termElements[id]}
+          label={labels[id] ?? ""}
+          canRename={canEdit}
+          on:rename={({ detail }) => handleRename(id, detail)}
           on:data={({ detail: data }) => routeInput(id, data)}
           on:close={() => srocket?.send({ close: id })}
           on:shrink={() => {
