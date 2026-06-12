@@ -7,10 +7,9 @@
     MonitorIcon,
     PlusCircleIcon,
     SettingsIcon,
+    TerminalIcon,
     WifiIcon,
   } from "svelte-feather-icons";
-
-  import logo from "$lib/assets/logo.svg";
 
   export let connected: boolean;
   export let hasWriteAccess: boolean | undefined;
@@ -32,10 +31,10 @@
 
 <div class="panel inline-block px-3 py-2">
   <div class="flex items-center select-none">
-    <a href="/" class="flex-shrink-0"
-      ><img src={logo} alt="sshx logo" class="h-10" /></a
-    >
-    <p class="ml-1.5 mr-2 font-medium">sshx</p>
+    <div class="brand">
+      <TerminalIcon size="18" strokeWidth={2} />
+      <span>Oracle Board</span>
+    </div>
 
     <div class="v-divider" />
 
@@ -106,24 +105,29 @@
 </div>
 
 <style lang="postcss">
+  .brand {
+    @apply flex items-center gap-1.5 text-indigo-400 font-semibold text-sm tracking-tight;
+  }
+
   .v-divider {
-    @apply h-5 mx-2 border-l-4 border-zinc-800;
+    @apply h-5 mx-2 border-l border-zinc-700;
   }
 
   .icon-button {
-    @apply relative rounded-md p-1 hover:bg-zinc-700 active:bg-indigo-700 transition-colors;
-    @apply disabled:opacity-50 disabled:bg-transparent;
+    @apply relative rounded-lg p-1.5 text-zinc-400 hover:text-white hover:bg-zinc-700/80;
+    @apply active:bg-indigo-600 transition-all duration-150;
+    @apply disabled:opacity-30 disabled:bg-transparent disabled:text-zinc-600;
   }
 
   .icon-button.recording {
-    @apply bg-red-600 text-white hover:bg-red-600;
+    @apply bg-red-600 text-white hover:bg-red-500;
   }
 
   .icon-button.active {
-    @apply bg-indigo-600 text-white hover:bg-indigo-600;
+    @apply bg-indigo-600 text-white hover:bg-indigo-500;
   }
 
   .activity {
-    @apply absolute top-1 right-0.5 text-xs p-[4.5px] bg-red-500 rounded-full;
+    @apply absolute top-0.5 right-0.5 p-[4px] bg-red-500 rounded-full;
   }
 </style>

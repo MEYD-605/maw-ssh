@@ -3,7 +3,7 @@
 
   import Session from "$lib/Session.svelte";
 
-  let title: string = "Remote Terminal | sshx";
+  let title: string = "Oracle Board";
 </script>
 
 <svelte:head>
@@ -20,7 +20,7 @@
   id={$page.params.id}
   on:receiveName={({ detail: sessionName }) => {
     if (sessionName) {
-      title = `${sessionName} | sshx`;
+      title = `${sessionName} | Oracle Board`;
     }
   }}
 />
