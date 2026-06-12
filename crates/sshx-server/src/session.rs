@@ -18,7 +18,7 @@ use tokio_stream::Stream;
 use tracing::{debug, warn};
 
 use crate::utils::Shutdown;
-use crate::web::protocol::{WsServer, WsUser, WsWinsize};
+use crate::web::protocol::{BoardItem, WsServer, WsUser, WsWinsize};
 
 mod snapshot;
 
@@ -75,6 +75,9 @@ pub struct Session {
     /// Triggered from metadata events when an immediate snapshot is needed.
     sync_notify: Notify,
 
+    /// Collaborative board items — in-memory, for late-join snapshot replay.
+    board: Mutex<Vec<BoardItem>>,
+
     /// Set when this session has been closed and removed.
     shutdown: Shutdown,
 }
@@ -117,6 +120,7 @@ impl Session {
             update_tx,
             update_rx,
             sync_notify: Notify::new(),
+            board: Mutex::new(Vec::new()),
             shutdown: Shutdown::new(),
         }
     }
@@ -366,6 +370,58 @@ impl Session {
             .send(WsServer::Hear(id, name, msg.into()))
             .ok();
         Ok(())
+    }
+
+    /// Return a snapshot of all current board items (sent to newly-joined clients).
+    pub fn board_snapshot(&self) -> Vec<BoardItem> {
+        self.board.lock().clone()
+    }
+
+    /// Add or update a board item, broadcasting to all clients.
+    pub fn board_put(&self, item: BoardItem) {
+        {
+            let mut board = self.board.lock();
+            if let Some(existing) = board.iter_mut().find(|b| b.id == item.id) {
+                *existing = item.clone();
+            } else {
+                board.push(item.clone());
+            }
+        }
+        self.broadcast.send(WsServer::BoardPut(item)).ok();
+    }
+
+    /// Move a board item to a new position, broadcasting to all clients.
+    pub fn board_move(&self, id: &str, x: i32, y: i32) {
+        {
+            let mut board = self.board.lock();
+            if let Some(item) = board.iter_mut().find(|b| b.id == id) {
+                item.x = x;
+                item.y = y;
+            }
+        }
+        self.broadcast
+            .send(WsServer::BoardMove(id.to_owned(), x, y))
+            .ok();
+    }
+
+    /// Remove a board item, broadcasting to all clients.
+    pub fn board_delete(&self, id: &str) {
+        self.board.lock().retain(|b| b.id != id);
+        self.broadcast
+            .send(WsServer::BoardDelete(id.to_owned()))
+            .ok();
+    }
+
+    /// Broadcast a voice clip to all clients (ephemeral — not persisted).
+    pub fn send_voice(&self, uid: Uid, data: Bytes) {
+        self.broadcast.send(WsServer::VoiceData(uid, data)).ok();
+    }
+
+    /// Broadcast a screen-share frame to all clients (ephemeral — not persisted).
+    pub fn send_stream_frame(&self, uid: Uid, stream_id: String, data: Bytes) {
+        self.broadcast
+            .send(WsServer::StreamFrame(uid, stream_id, data))
+            .ok();
     }
 
     /// Send a measurement of the shell latency.

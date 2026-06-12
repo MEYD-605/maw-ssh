@@ -132,6 +132,7 @@ async fn handle_socket(socket: &mut WebSocket, session: Arc<Session>) -> Result<
     let update_tx = session.update_tx(); // start listening for updates before any state reads
     let mut broadcast_stream = session.subscribe_broadcast();
     send(socket, WsServer::Users(session.list_users())).await?;
+    send(socket, WsServer::Board(session.board_snapshot())).await?;
 
     let mut subscribed = HashSet::new(); // prevent duplicate subscriptions
     let (chunks_tx, mut chunks_rx) = mpsc::channel::<(Sid, u64, Vec<Bytes>)>(1);
@@ -245,6 +246,33 @@ async fn handle_socket(socket: &mut WebSocket, session: Arc<Session>) -> Result<
             }
             WsClient::Ping(ts) => {
                 send(socket, WsServer::Pong(ts)).await?;
+            }
+            WsClient::Voice(data) => {
+                session.send_voice(user_id, data);
+            }
+            WsClient::StreamFrame(stream_id, data) => {
+                session.send_stream_frame(user_id, stream_id, data);
+            }
+            WsClient::BoardPut(item) => {
+                if let Err(e) = session.check_write_permission(user_id) {
+                    send(socket, WsServer::Error(e.to_string())).await?;
+                    continue;
+                }
+                session.board_put(item);
+            }
+            WsClient::BoardMove(id, x, y) => {
+                if let Err(e) = session.check_write_permission(user_id) {
+                    send(socket, WsServer::Error(e.to_string())).await?;
+                    continue;
+                }
+                session.board_move(&id, x, y);
+            }
+            WsClient::BoardDelete(id) => {
+                if let Err(e) = session.check_write_permission(user_id) {
+                    send(socket, WsServer::Error(e.to_string())).await?;
+                    continue;
+                }
+                session.board_delete(&id);
             }
         }
     }
