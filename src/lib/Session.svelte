@@ -633,35 +633,45 @@
     input.click();
   }
 
-  const MAX_VIDEO_BYTES = 8 * 1024 * 1024; // 8 MB — kept small so it syncs over WS
+  // Above this, the whole file won't fit in a WS message — show it locally but
+  // don't broadcast the data URL to peers.
+  const VIDEO_SHARE_CAP = 20 * 1024 * 1024; // 20 MB
 
-  // Add a video clip to the board (shared via boardPut as a data URL).
+  // Add a video clip to the board. Local preview works at ANY size via an
+  // object URL; the file is shared with peers (as a data URL) only when small
+  // enough to fit over the WS. A download button on the tile lets anyone save it.
   function addVideoFile(file: File) {
     if (hasWriteAccess === false) return;
     if (!file.type.startsWith("video/")) return;
-    if (file.size > MAX_VIDEO_BYTES) {
-      makeToast({
-        kind: "error",
-        message: "Video too large (max 8 MB to share on the board).",
-      });
-      return;
-    }
-    const reader = new FileReader();
-    reader.onload = () => {
-      const [x, y] = nextBoardPos();
-      const item: BoardItem = {
-        id: crypto.randomUUID(),
-        kind: "video",
-        x,
-        y,
-        w: 320,
-        h: 240,
-        dataUrl: String(reader.result),
-      };
-      upsertBoardItem(item);
-      srocket?.send({ boardPut: item });
+
+    const [x, y] = nextBoardPos();
+    const id = crypto.randomUUID();
+    const item: BoardItem = {
+      id,
+      kind: "video",
+      x,
+      y,
+      w: 480,
+      h: 0,
+      // Instant local preview at any size (blob URL stays on this machine).
+      dataUrl: URL.createObjectURL(file),
     };
-    reader.readAsDataURL(file);
+    upsertBoardItem(item);
+
+    if (file.size <= VIDEO_SHARE_CAP) {
+      // Small enough to share: re-send as a data URL so peers can see + save it.
+      const reader = new FileReader();
+      reader.onload = () => {
+        const shared = { ...item, dataUrl: String(reader.result) };
+        srocket?.send({ boardPut: shared });
+      };
+      reader.readAsDataURL(file);
+    } else {
+      makeToast({
+        kind: "info",
+        message: "Video shown here — too large to share with others.",
+      });
+    }
   }
 
   function handleVideoPick() {

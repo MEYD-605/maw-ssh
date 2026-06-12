@@ -1,7 +1,7 @@
 <script lang="ts">
   import { createEventDispatcher } from "svelte";
   import { fade } from "svelte/transition";
-  import { XIcon } from "svelte-feather-icons";
+  import { XIcon, DownloadIcon } from "svelte-feather-icons";
 
   import { slide } from "../action/slide";
   import type { BoardItem } from "../protocol";
@@ -183,6 +183,18 @@
         <div class="live-tag">● LIVE</div>
       {/if}
 
+      {#if item.kind === "video"}
+        <a
+          class="download"
+          href={item.dataUrl}
+          download="video"
+          title="Download video"
+          on:pointerdown={(event) => event.stopPropagation()}
+        >
+          <DownloadIcon size="14" />
+        </a>
+      {/if}
+
       {#if hasWriteAccess !== false}
         <button
           class="delete"
@@ -240,6 +252,15 @@
   }
 
   .board-item:hover .delete {
+    @apply opacity-100;
+  }
+
+  .download {
+    @apply absolute top-1 left-1 p-0.5 rounded bg-zinc-800/80 text-zinc-300 z-10;
+    @apply opacity-0 transition-opacity hover:bg-indigo-600 hover:text-white;
+  }
+
+  .board-item:hover .download {
     @apply opacity-100;
   }
 </style>
