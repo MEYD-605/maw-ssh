@@ -8,6 +8,7 @@
     PlusCircleIcon,
     SettingsIcon,
     TerminalIcon,
+    VideoIcon,
     WifiIcon,
   } from "svelte-feather-icons";
 
@@ -17,6 +18,7 @@
   // ── maw share workboard extensions ──
   export let micRecording = false;
   export let streamActive = false;
+  export let cameraActive = false;
 
   const dispatch = createEventDispatcher<{
     create: void;
@@ -26,6 +28,7 @@
     micDown: void;
     image: void;
     stream: void;
+    camera: void;
   }>();
 </script>
 
@@ -91,6 +94,15 @@
         title={streamActive ? "Stop screen share" : "Share screen"}
       >
         <MonitorIcon strokeWidth={1.5} class="p-0.5" />
+      </button>
+      <button
+        class="icon-button"
+        class:active={cameraActive}
+        on:click={() => dispatch("camera")}
+        disabled={!connected}
+        title={cameraActive ? "Stop camera" : "Start camera"}
+      >
+        <VideoIcon strokeWidth={1.5} class="p-0.5" />
       </button>
     </div>
 

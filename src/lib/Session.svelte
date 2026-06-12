@@ -152,6 +152,8 @@
   // WebRTC P2P mesh for voice/video (replaces WS voice relay for low latency).
   let rtcMesh: RtcMesh | null = null;
   let micStream: MediaStream | null = null;
+  let cameraStream: MediaStream | null = null;
+  let cameraActive = false;
   // Remote audio elements keyed by peer UID.
   let remoteAudios: Record<number, HTMLAudioElement> = {};
   let stream: StreamController | null = null;
@@ -699,6 +701,31 @@
     }
   }
 
+  // Camera toggle: getUserMedia video → WebRTC mesh (P2P video tiles).
+  async function handleCamera() {
+    if (cameraActive && cameraStream) {
+      for (const track of cameraStream.getTracks()) {
+        rtcMesh?.removeTrack(track);
+        track.stop();
+      }
+      cameraStream = null;
+      cameraActive = false;
+      return;
+    }
+    try {
+      cameraStream = await navigator.mediaDevices.getUserMedia({
+        video: { width: 320, height: 240, frameRate: 15 },
+        audio: false,
+      });
+      for (const track of cameraStream.getVideoTracks()) {
+        rtcMesh?.addTrack(track);
+      }
+      cameraActive = true;
+    } catch {
+      makeToast({ kind: "error", message: "Camera blocked." });
+    }
+  }
+
   function handleBoardMove(id: string, x: number, y: number) {
     const item = boardItems.find((it) => it.id === id);
     if (item) upsertBoardItem({ ...item, x, y });
@@ -714,6 +741,7 @@
     stream?.stop();
     rtcMesh?.dispose();
     micStream?.getTracks().forEach((t) => t.stop());
+    cameraStream?.getTracks().forEach((t) => t.stop());
     for (const audio of Object.values(remoteAudios)) audio.pause();
     for (const url of Object.values(streamSrcs)) URL.revokeObjectURL(url);
   });
@@ -734,6 +762,7 @@
       {hasWriteAccess}
       {micRecording}
       {streamActive}
+      {cameraActive}
       on:create={handleCreate}
       on:chat={() => {
         showChat = !showChat;
@@ -748,6 +777,7 @@
       on:micDown={handleMicDown}
       on:image={handleImage}
       on:stream={handleStream}
+      on:camera={handleCamera}
     />
 
     {#if showNetworkInfo}
