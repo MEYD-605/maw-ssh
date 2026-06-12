@@ -1,6 +1,7 @@
 <script lang="ts">
   import { createEventDispatcher } from "svelte";
   import {
+    GridIcon,
     ImageIcon,
     MessageSquareIcon,
     MicIcon,
@@ -20,6 +21,7 @@
 
   const dispatch = createEventDispatcher<{
     create: void;
+    tile: void;
     chat: void;
     settings: void;
     networkInfo: void;
@@ -51,6 +53,14 @@
           : "Create new terminal"}
       >
         <PlusCircleIcon strokeWidth={1.5} class="p-0.5" />
+      </button>
+      <button
+        class="icon-button"
+        on:click={() => dispatch("tile")}
+        disabled={!connected || hasWriteAccess === false}
+        title="Tile terminals into a grid"
+      >
+        <GridIcon strokeWidth={1.5} class="p-0.5" />
       </button>
       <button class="icon-button" on:click={() => dispatch("chat")}>
         <MessageSquareIcon strokeWidth={1.5} class="p-0.5" />

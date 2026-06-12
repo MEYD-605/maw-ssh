@@ -715,6 +715,38 @@
     }
   }
 
+  // Tile all open terminals into a uniform grid and recenter the view on it.
+  // Columns auto-scale: ≤2 → 2 cols (1 row), ≤4 → 2 cols (2×2), else 3 cols.
+  function tileWindows() {
+    if (!hasWriteAccess) return;
+    const n = shells.length;
+    if (n === 0) return;
+    const nCols = n <= 4 ? 2 : 3;
+    const nRows = Math.ceil(n / nCols);
+    const COLS = 80;
+    const ROWS = 24;
+    // Approximate rendered window footprint in world px (incl. header + gaps).
+    const TERM_W = COLS * 9 + 40;
+    const TERM_H = ROWS * 17 + 80;
+    const gridW = nCols * TERM_W;
+    const gridH = nRows * TERM_H;
+    shells.forEach(([id, ws], i) => {
+      const col = i % nCols;
+      const row = Math.floor(i / nCols);
+      const x = Math.round(-gridW / 2 + col * TERM_W);
+      const y = Math.round(-gridH / 2 + row * TERM_H);
+      srocket?.send({ move: [id, { ...ws, x, y, rows: ROWS, cols: COLS }] });
+    });
+    // Recenter + zoom so the whole grid (centered on world origin) fits in view.
+    // Go through touchZoom — it owns center/zoom, so assigning them directly
+    // would get overwritten on its next frame.
+    const fit = Math.min(
+      window.innerWidth / (gridW + 160),
+      window.innerHeight / (gridH + 160),
+    );
+    touchZoom.moveTo([0, 0], Math.max(0.3, Math.min(1, fit)));
+  }
+
   function handleBoardMove(id: string, x: number, y: number) {
     const item = boardItems.find((it) => it.id === id);
     if (item) upsertBoardItem({ ...item, x, y });
@@ -753,6 +785,7 @@
       {micRecording}
       {cameraActive}
       on:create={handleCreate}
+      on:tile={tileWindows}
       on:chat={() => {
         showChat = !showChat;
         newMessages = false;
