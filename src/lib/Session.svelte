@@ -726,10 +726,20 @@
         }
         movingIsDone = true;
         sendMove.cancel();
-        const edgeSnap =
+        let edgeSnap =
           pendingEdgeSnap?.id === moving ? pendingEdgeSnap : null;
-        if (edgeSnap && event.type !== "pointercancel") {
-          void applySnap(moving, edgeSnap.action, false);
+        const mayEdgeSnap = event.type === "pointerup" || event.type === "mouseup";
+        if (!edgeSnap && mayEdgeSnap) {
+          const edgeAction = detectEdgeSnapAction(
+            event.clientX,
+            event.clientY,
+            { w: window.innerWidth, h: window.innerHeight },
+            { coarse: isCoarsePointer() },
+          );
+          if (edgeAction) edgeSnap = { id: moving, action: edgeAction };
+        }
+        if (edgeSnap && mayEdgeSnap) {
+          void applySnap(moving, edgeSnap.action, false, { cycle: false });
         } else {
           srocket?.send({ move: [moving, movingSize] });
         }
@@ -1457,7 +1467,12 @@
   // Snap one terminal into a region of the visible viewport (Rectangle-style),
   // resizing its rows/cols to fill the target. Only the final shared `move` is
   // sent; gated by canEdit like every other layout mutation.
-  async function applySnap(id: number, action: SnapAction, settle = true) {
+  async function applySnap(
+    id: number,
+    action: SnapAction,
+    settle = true,
+    options: { cycle?: boolean } = {},
+  ) {
     if (!canEdit) return;
     if (settle) await settleLayout(); // don't measure stale geometry after a font-size change
     if (!canEdit) return;
@@ -1466,7 +1481,8 @@
     const view = visibleWorldRect();
     // Current footprint — real when laid out, cols×cell estimate as fallback.
     const currentRect = terminalFootprint(id, ws);
-    const resolvedAction = cycleSnapAction(id, action, currentRect);
+    const resolvedAction =
+      options.cycle === false ? action : cycleSnapAction(id, action, currentRect);
     const target = computeSnapTarget(resolvedAction, view, currentRect);
     // Measure this terminal's rendered cell size (post-zoom screen px -> world
     // px), the same basis tileWindows()/fitToContent() use.
