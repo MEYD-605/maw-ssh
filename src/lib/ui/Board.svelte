@@ -25,9 +25,60 @@
 
   const dispatch = createEventDispatcher<{
     move: { id: string; x: number; y: number };
+    resize: { id: string; w: number; h: number };
     delete: string;
     edit: { id: string; text: string };
   }>();
+
+  // Resize state — drag the bottom-right handle to stretch a tile (like a window).
+  const MIN_W = 120;
+  const MIN_H = 80;
+  let resizeId: string | null = null;
+  let resizeStartW = 0;
+  let resizeStartH = 0;
+  let resizeStartWorld = [0, 0];
+  let resizePending = false;
+
+  function startResize(event: PointerEvent, item: BoardItem) {
+    if (hasWriteAccess === false) return;
+    event.preventDefault();
+    event.stopPropagation();
+    resizeId = item.id;
+    resizeStartW = item.w || MIN_W;
+    resizeStartH = item.h || MIN_H;
+    resizeStartWorld = normalizePosition(event);
+    window.addEventListener("pointermove", onResize);
+    window.addEventListener("pointerup", endResize);
+  }
+
+  function currentResize(event: PointerEvent) {
+    const [wx, wy] = normalizePosition(event);
+    const w = Math.max(MIN_W, Math.round(resizeStartW + (wx - resizeStartWorld[0])));
+    const h = Math.max(MIN_H, Math.round(resizeStartH + (wy - resizeStartWorld[1])));
+    return { w, h };
+  }
+
+  function onResize(event: PointerEvent) {
+    if (resizeId === null) return;
+    const { w, h } = currentResize(event);
+    if (!resizePending) {
+      resizePending = true;
+      requestAnimationFrame(() => {
+        resizePending = false;
+        if (resizeId !== null) dispatch("resize", { id: resizeId, w, h });
+      });
+    }
+  }
+
+  function endResize(event: PointerEvent) {
+    if (resizeId !== null) {
+      const { w, h } = currentResize(event);
+      dispatch("resize", { id: resizeId, w, h });
+    }
+    resizeId = null;
+    window.removeEventListener("pointermove", onResize);
+    window.removeEventListener("pointerup", endResize);
+  }
 
   // Drag state. While dragging, the dragged tile renders at `dragPos` and sends
   // BoardMove on a requestAnimationFrame cadence (contract v2: client throttle).
@@ -204,6 +255,13 @@
         >
           <XIcon size="14" />
         </button>
+        <!-- Resize handle: drag to stretch the tile like a window. -->
+        <div
+          class="resize-handle"
+          class:resizing={resizeId === item.id}
+          title="Drag to resize"
+          on:pointerdown={(event) => startResize(event, item)}
+        />
       {/if}
     </div>
   </div>
@@ -262,5 +320,23 @@
 
   .board-item:hover .download {
     @apply opacity-100;
+  }
+
+  .resize-handle {
+    @apply absolute bottom-0 right-0 w-4 h-4 z-20 cursor-nwse-resize touch-none;
+    @apply opacity-0 transition-opacity;
+    background: linear-gradient(
+      135deg,
+      transparent 0%,
+      transparent 50%,
+      theme("colors.indigo.400") 50%,
+      theme("colors.indigo.400") 100%
+    );
+    border-bottom-right-radius: theme("borderRadius.lg");
+  }
+
+  .board-item:hover .resize-handle,
+  .resize-handle.resizing {
+    @apply opacity-90;
   }
 </style>

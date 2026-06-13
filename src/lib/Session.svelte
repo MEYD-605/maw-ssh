@@ -1097,6 +1097,15 @@
     srocket?.send({ boardMove: [id, x, y] });
   }
 
+  function handleBoardResize(id: string, w: number, h: number) {
+    if (lockedForMe) return;
+    const item = boardItems.find((it) => it.id === id);
+    if (!item) return;
+    const resized = { ...item, w, h };
+    upsertBoardItem(resized);
+    srocket?.send({ boardPut: resized }); // no boardResize msg — sync full item
+  }
+
   function handleBoardDelete(id: string) {
     if (lockedForMe) return;
     removeBoardItem(id);
@@ -1328,6 +1337,8 @@
       {normalizePosition}
       on:move={({ detail }) =>
         handleBoardMove(detail.id, detail.x, detail.y)}
+      on:resize={({ detail }) =>
+        handleBoardResize(detail.id, detail.w, detail.h)}
       on:delete={({ detail }) => handleBoardDelete(detail)}
       on:edit={({ detail }) => handleNoteEdit(detail.id, detail.text)}
     />
