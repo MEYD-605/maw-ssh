@@ -16,6 +16,15 @@
   let ok = false;
   let timer: ReturnType<typeof setInterval> | null = null;
 
+  // arra (knowledge base) status — written to /arra-stats.json by a cron writer.
+  let arra: {
+    ok: boolean;
+    total: number;
+    byType: Record<string, number>;
+    indexAgeHours: number | null;
+    dbMb: number;
+  } | null = null;
+
   async function poll() {
     try {
       const r = await fetch("/api/sysstat", { cache: "no-store" });
@@ -30,6 +39,12 @@
       ok = true;
     } catch {
       ok = false;
+    }
+    try {
+      const ar = await fetch("/arra-stats.json", { cache: "no-store" });
+      arra = ar.ok ? await ar.json() : null;
+    } catch {
+      arra = null;
     }
   }
 
@@ -80,6 +95,33 @@
       <span class="lbl">LOAD</span><span class="val">{load}</span>
       <span class="dot" class:online={ok} />
     </div>
+
+    <!-- arra knowledge base -->
+    <div class="arra">
+      <div class="head2">
+        <span>◆ ARRA · knowledge</span>
+        <span class="dot" class:online={arra?.ok} />
+      </div>
+      {#if arra}
+        <div class="row"><span class="lbl">DOCS</span><span class="val">{arra.total.toLocaleString()}</span></div>
+        <div class="row">
+          <span class="lbl">DB</span><span class="val">{(arra.dbMb / 1024).toFixed(1)} GB</span>
+        </div>
+        <div class="row">
+          <span class="lbl">INDEX</span>
+          <span class="val">{arra.indexAgeHours != null ? `${arra.indexAgeHours.toFixed(1)}h ago` : "—"}</span>
+        </div>
+        {#if arra.byType}
+          <div class="types">
+            {#each Object.entries(arra.byType) as [k, v]}
+              <span class="chip">{k} {v.toLocaleString()}</span>
+            {/each}
+          </div>
+        {/if}
+      {:else}
+        <div class="row"><span class="lbl">arra</span><span class="val">offline</span></div>
+      {/if}
+    </div>
   </div>
 {/if}
 
@@ -127,5 +169,23 @@
   }
   .dot.online {
     @apply bg-emerald-500;
+  }
+  .arra {
+    @apply mt-3 pt-2.5 border-t border-zinc-800;
+  }
+  .head2 {
+    @apply flex items-center text-[10px] tracking-widest text-fuchsia-400 mb-2;
+  }
+  .head2 .dot {
+    @apply ml-auto;
+  }
+  .row {
+    @apply flex items-center justify-between mb-1;
+  }
+  .types {
+    @apply flex flex-wrap gap-1 mt-1.5;
+  }
+  .chip {
+    @apply px-1.5 py-0.5 rounded bg-zinc-800 text-[10px] text-zinc-400;
   }
 </style>
