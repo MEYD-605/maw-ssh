@@ -101,7 +101,7 @@ fn backend() -> Router<Arc<ServerState>> {
 
 /// Read-only file browser root. Listing is confined to this directory; any
 /// attempt to escape it (via `..` or absolute components) is rejected.
-const FILES_ROOT: &str = "/root/board-workspace";
+const FILES_ROOT: &str = "/root/maw-workspace";
 
 /// Resolve a caller-supplied relative path against FILES_ROOT, rejecting any
 /// component that could escape the root. Returns None if the path is unsafe.
@@ -205,9 +205,13 @@ async fn read_file(Query(params): Query<HashMap<String, String>>) -> Response {
     // files (Bo directive: "watch only for passwords"). Name-based denylist —
     // defense in depth on top of the dedicated, secret-free FILES_ROOT.
     let lower = rel.to_ascii_lowercase();
-    const CREDENTIAL_MARKERS: [&str; 9] = [
+    // FILES_ROOT is /root/maw-workspace (Bo directive 2026-06-13: "show the old
+    // files, just block passwords"). maw-workspace is NOT secret-free, so this
+    // name denylist is the primary password/credential guard. SHARED_KNOWLEDGE.md
+    // is the fleet's credential/infra index — block it too.
+    const CREDENTIAL_MARKERS: [&str; 10] = [
         "secret", "credential", "password", "passwd", "token", "id_rsa", ".key",
-        ".pem", ".env",
+        ".pem", ".env", "shared_knowledge",
     ];
     if CREDENTIAL_MARKERS.iter().any(|m| lower.contains(m)) {
         return (StatusCode::FORBIDDEN, "restricted file").into_response();
