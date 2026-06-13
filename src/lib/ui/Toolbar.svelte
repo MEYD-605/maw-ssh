@@ -12,6 +12,7 @@
     FileTextIcon,
     FilmIcon,
     FolderIcon,
+    HashIcon,
     ClipboardIcon,
     GridIcon,
     LockIcon,
@@ -38,6 +39,7 @@
   export let boardLocked = false;
   export let lockedForMe = false;
   export let broadcastMode = false;
+  export let numpadOpen = false;
 
   const dispatch = createEventDispatcher<{
     create: void;
@@ -50,6 +52,7 @@
     note: void;
     video: void;
     files: void;
+    numpad: void;
     doc: void;
     chat: void;
     settings: void;
@@ -193,6 +196,15 @@
         title="File explorer"
       >
         <FolderIcon strokeWidth={1.5} class="p-0.5" />
+      </button>
+      <button
+        class="icon-button"
+        class:active={numpadOpen}
+        on:click={() => dispatch("numpad")}
+        disabled={!connected}
+        title={numpadOpen ? "Hide numpad" : "Show numpad"}
+      >
+        <HashIcon strokeWidth={1.5} class="p-0.5" />
       </button>
       <button
         class="icon-button"

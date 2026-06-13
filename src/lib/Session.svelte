@@ -46,6 +46,7 @@
   import CameraPreview from "./ui/CameraPreview.svelte";
   import FileExplorer from "./ui/FileExplorer.svelte";
   import MarkdownDoc from "./ui/MarkdownDoc.svelte";
+  import Numpad from "./ui/Numpad.svelte";
   import SnippetBar from "./ui/SnippetBar.svelte";
   import YouTubePopup from "./ui/YouTubePopup.svelte";
   import Avatars from "./ui/Avatars.svelte";
@@ -91,6 +92,7 @@
   let showDoc = false; // @hmr:keep
   let showSnippets = false; // @hmr:keep
   let showYouTube = false; // @hmr:keep
+  let showNumpad = false; // @hmr:keep
 
   // Auto-hiding toolbar (Apple menu-bar style): fades out after inactivity,
   // reveals when the pointer nears the top edge or hovers it.
@@ -527,6 +529,27 @@
       return;
     }
     routeInput(target, new TextEncoder().encode(text));
+  }
+
+  function handleNumpadPress(key: string) {
+    const live = focused[0];
+    const target =
+      live !== undefined
+        ? live
+        : shells.some(([sid]) => sid === lastFocused)
+          ? lastFocused
+          : undefined;
+    if (target === undefined) {
+      makeToast({
+        kind: "info",
+        message: "Tap a terminal first.",
+      });
+      return;
+    }
+
+    const text =
+      key === "Enter" ? "\r" : key === "Backspace" ? "\x7f" : key;
+    handleInput(target, new TextEncoder().encode(text));
   }
 
   // ── Terminal labels (Bo 2026-06-13) ───────────────────────────────────────
@@ -1530,6 +1553,7 @@
       {boardLocked}
       {lockedForMe}
       {broadcastMode}
+      numpadOpen={showNumpad}
       on:create={handleCreate}
       on:lock={toggleLock}
       on:broadcast={() => (broadcastMode = !broadcastMode)}
@@ -1540,6 +1564,7 @@
       on:note={addNote}
       on:video={handleVideoPick}
       on:files={() => (showExplorer = !showExplorer)}
+      on:numpad={() => (showNumpad = !showNumpad)}
       on:doc={() => (showDoc = !showDoc)}
       on:chat={() => {
         showChat = !showChat;
@@ -1641,6 +1666,13 @@
     on:paste={({ detail }) => pasteSnippet(detail)}
     on:close={() => (showSnippets = false)}
   />
+
+  {#if showNumpad}
+    <Numpad
+      on:press={({ detail }) => handleNumpadPress(detail)}
+      on:close={() => (showNumpad = false)}
+    />
+  {/if}
 
   {#if showDoc}
     <MarkdownDoc
