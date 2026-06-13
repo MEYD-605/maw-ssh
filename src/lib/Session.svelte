@@ -772,11 +772,17 @@
   // rejected -> board desync. Require an explicit `true`.
   $: canEdit = hasWriteAccess === true && !lockedForMe;
 
-  // Auto-fit the view once on first load (after terminals have rendered so their
-  // world sizes are real), so every device opens centered + everything visible.
+  // Auto-fit the view once on first load so every device opens centered with
+  // everything visible. Must wait until terminals have actually rendered — a
+  // fixed delay was unreliable (firing before offsetWidth was set made
+  // fitToContent see no measurable rects and fall back to the world origin,
+  // leaving content stuck off-screen top-left). Retry until measurable.
   $: if (!didInitialFit && initialShellsReceived && shells.length > 0) {
     didInitialFit = true;
-    setTimeout(() => fitToContent(), 350);
+    // Small delay so a terminal renders first (fitToContent measures cell size
+    // from it); the box math falls back to an estimate if not, so this no longer
+    // has to wait for a precise layout.
+    setTimeout(() => fitToContent(), 400);
   }
 
   // Fire the deferred auto-create once write-perms arrive (still empty board),
@@ -1206,10 +1212,30 @@
       maxX = Math.max(maxX, x + w);
       maxY = Math.max(maxY, y + h);
     };
-    for (const [id, ws] of shells) {
-      const el = termWrappers[id];
-      if (!el || el.offsetWidth <= 0) continue;
-      add(ws.x, ws.y, el.offsetWidth, el.offsetHeight); // offsetW/H = world px
+    // Derive each terminal's world box from its rows/cols + cell size (measured
+    // from a live terminal, with a fallback estimate) instead of reading
+    // offsetWidth. Shell data is available immediately, so the fit no longer
+    // depends on DOM render timing — that timing was the bug that left the view
+    // stuck at the origin when a terminal hadn't laid out yet.
+    let cellW = 9.6;
+    let cellH = 19;
+    if (shells.length) {
+      const ws0 = shells[0][1];
+      const screenEl = termElements[shells[0][0]]?.querySelector(
+        ".xterm-screen",
+      ) as HTMLElement | null;
+      if (screenEl && zoom && ws0.cols && ws0.rows) {
+        const r = screenEl.getBoundingClientRect();
+        if (r.width && r.height) {
+          cellW = r.width / ws0.cols / zoom;
+          cellH = r.height / ws0.rows / zoom;
+        }
+      }
+    }
+    const CHROME_W = 36;
+    const CHROME_H = 60;
+    for (const [, ws] of shells) {
+      add(ws.x, ws.y, ws.cols * cellW + CHROME_W, ws.rows * cellH + CHROME_H);
     }
     for (const it of boardItems) {
       if (it.kind === "doc" || it.kind === "lock" || it.kind === "label") continue;
@@ -1227,10 +1253,18 @@
       window.innerWidth / (w + PAD * 2),
       window.innerHeight / (h + PAD * 2),
     );
-    touchZoom.moveTo(
-      [(minX + maxX) / 2, (minY + maxY) / 2],
-      Math.max(0.2, Math.min(1, fit)),
-    );
+    const z = Math.max(0.2, Math.min(1, fit));
+    // Solve for the touchZoom center that lands the bbox centre at the viewport
+    // centre. World→screen is screen = (world - center + constantOffset)*zoom
+    // (see normalizePosition); the canvas origin is offset by CONSTANT_OFFSET
+    // (the terminal spawn point), NOT the viewport centre — so passing the bbox
+    // centre directly left the content stuck up-left. Invert for `center`.
+    const off = getConstantOffset();
+    const bcx = (minX + maxX) / 2;
+    const bcy = (minY + maxY) / 2;
+    const cx = bcx + off[0] - window.innerWidth / (2 * z);
+    const cy = bcy + off[1] - window.innerHeight / (2 * z);
+    touchZoom.moveTo([cx, cy], z);
   }
 
   // Center button → fit everything centered (was: reset to origin).
