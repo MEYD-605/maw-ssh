@@ -123,11 +123,29 @@ fn safe_join(rel: &str) -> Option<PathBuf> {
     }
 }
 
+/// Resolve symlinks and confirm the path stays within FILES_ROOT.
+///
+/// `safe_join` only inspects path *components* textually — it cannot see a
+/// symlink that lives inside the root and points outside it (e.g.
+/// `public.txt -> /etc/passwd`). `canonicalize` follows every symlink, so a
+/// `starts_with` check on the canonicalized result closes that escape. Returns
+/// None on escape OR if the path does not exist (callers map None -> 404, which
+/// also avoids leaking which case occurred).
+async fn confine_to_root(path: &Path) -> Option<PathBuf> {
+    let canon_root = tokio::fs::canonicalize(FILES_ROOT).await.ok()?;
+    let canon = tokio::fs::canonicalize(path).await.ok()?;
+    canon.starts_with(&canon_root).then_some(canon)
+}
+
 /// List a directory under FILES_ROOT for the IDE-style file explorer.
 async fn list_files(Query(params): Query<HashMap<String, String>>) -> Response {
     let rel = params.get("path").map(String::as_str).unwrap_or("");
     let Some(dir) = safe_join(rel) else {
         return (StatusCode::BAD_REQUEST, "invalid path").into_response();
+    };
+    // Resolve symlinks and confirm we stayed inside FILES_ROOT (see confine_to_root).
+    let Some(dir) = confine_to_root(&dir).await else {
+        return (StatusCode::NOT_FOUND, "not a directory").into_response();
     };
     let mut read = match tokio::fs::read_dir(&dir).await {
         Ok(r) => r,
@@ -195,7 +213,21 @@ async fn read_file(Query(params): Query<HashMap<String, String>>) -> Response {
         return (StatusCode::FORBIDDEN, "restricted file").into_response();
     }
 
-    // Check metadata
+    // Resolve symlinks and confirm we stayed inside FILES_ROOT (see confine_to_root).
+    // Without this, a symlink inside the workspace (public.txt -> /etc/passwd)
+    // escapes the root AND dodges the name-based denylist above.
+    let Some(path) = confine_to_root(&path).await else {
+        return (StatusCode::NOT_FOUND, "file not found").into_response();
+    };
+
+    // Re-apply the credential denylist to the *resolved* path, catching a
+    // symlink that points at a credential file elsewhere inside the root.
+    let resolved = path.to_string_lossy().to_ascii_lowercase();
+    if CREDENTIAL_MARKERS.iter().any(|m| resolved.contains(m)) {
+        return (StatusCode::FORBIDDEN, "restricted file").into_response();
+    }
+
+    // Check metadata (path is now canonical, so this no longer follows symlinks)
     let metadata = match tokio::fs::metadata(&path).await {
         Ok(m) => m,
         Err(_) => return (StatusCode::NOT_FOUND, "file not found").into_response(),

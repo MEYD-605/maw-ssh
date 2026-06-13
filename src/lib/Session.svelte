@@ -797,6 +797,18 @@
   }
 
   async function openFile(path: string) {
+    // Opening a file writes the shared FILE_VIEW_ID board item (boardPut below),
+    // so it is a board mutation and must respect the same lock as every other
+    // mutation. The soft-lock is client-side and the server only enforces
+    // canWrite, so without this gate a write-capable but locked-out user could
+    // change the shared file view for everyone.
+    if (!canEdit) {
+      makeToast({
+        kind: "error",
+        message: lockedForMe ? "Board is locked" : "Read-only access",
+      });
+      return;
+    }
     try {
       const res = await fetch(`/api/file?path=${encodeURIComponent(path)}`);
       if (!res.ok) {
