@@ -4,7 +4,7 @@
 
   const STORAGE_KEY = "sshx:numpad-position";
   const PANEL_W = 292;
-  const PANEL_H = 324;
+  const PANEL_H = 404; // tall enough for the calculator page
   const MARGIN = 12;
 
   const dispatch = createEventDispatcher<{ press: string; close: void }>();
@@ -22,6 +22,109 @@
     ["1", "2", "3"],
     ["0", ".", "Enter", "Backspace"],
   ];
+
+  // ── Two pages: keypad (sends to terminal) + calculator (Bo 2026-06-13) ──
+  let page: "pad" | "calc" = "pad";
+
+  // Classic calculator state machine — evaluates left-to-right like a physical
+  // calculator (no operator precedence), so it matches what people expect from
+  // a keypad calc. Plain arithmetic only; no dynamic code execution.
+  let calcEntry = "0";
+  let calcAcc: number | null = null;
+  let calcOp: string | null = null;
+  let calcReplace = true; // next digit starts a fresh entry
+
+  const OPS = ["÷", "×", "−", "+"];
+  const calcRows: string[][] = [
+    ["C", "⌫", "÷", "×"],
+    ["7", "8", "9", "−"],
+    ["4", "5", "6", "+"],
+    ["1", "2", "3", "="],
+  ];
+
+  function fmt(n: number): string {
+    if (!isFinite(n)) return "Error";
+    return String(Math.round(n * 1e10) / 1e10); // trim binary-float noise
+  }
+
+  function calcApply(a: number, b: number, op: string): number {
+    if (op === "+") return a + b;
+    if (op === "−") return a - b;
+    if (op === "×") return a * b;
+    if (op === "÷") return b === 0 ? NaN : a / b;
+    return b;
+  }
+
+  function calcDigit(d: string) {
+    if (calcEntry === "Error") calcClear();
+    if (d === ".") {
+      if (calcReplace) {
+        calcEntry = "0.";
+        calcReplace = false;
+      } else if (!calcEntry.includes(".")) {
+        calcEntry += ".";
+      }
+      return;
+    }
+    if (calcReplace) {
+      calcEntry = d;
+      calcReplace = false;
+    } else {
+      calcEntry = calcEntry === "0" ? d : calcEntry + d;
+    }
+  }
+
+  function calcOperator(op: string) {
+    if (calcEntry === "Error") return;
+    const cur = parseFloat(calcEntry);
+    if (calcAcc === null) calcAcc = cur;
+    else if (!calcReplace) calcAcc = calcApply(calcAcc, cur, calcOp ?? "+");
+    calcOp = op;
+    calcReplace = true;
+    calcEntry = fmt(calcAcc);
+  }
+
+  function calcEquals() {
+    if (calcOp === null || calcAcc === null) return;
+    calcEntry = fmt(calcApply(calcAcc, parseFloat(calcEntry), calcOp));
+    calcAcc = null;
+    calcOp = null;
+    calcReplace = true;
+  }
+
+  function calcClear() {
+    calcEntry = "0";
+    calcAcc = null;
+    calcOp = null;
+    calcReplace = true;
+  }
+
+  function calcBack() {
+    if (calcReplace || calcEntry === "Error") return;
+    calcEntry = calcEntry.length > 1 ? calcEntry.slice(0, -1) : "0";
+    if (calcEntry === "" || calcEntry === "-") calcEntry = "0";
+  }
+
+  function calcKey(k: string) {
+    if (k === "C") calcClear();
+    else if (k === "⌫") calcBack();
+    else if (k === "=") calcEquals();
+    else if (OPS.includes(k)) calcOperator(k);
+    else calcDigit(k);
+  }
+
+  // Push the current result into the focused terminal (reuses the same dispatch
+  // path as the keypad, so it honors canEdit and target selection).
+  function calcSend() {
+    if (calcEntry !== "Error") dispatch("press", calcEntry);
+  }
+
+  function tap(event: PointerEvent, fn: () => void) {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    event.stopPropagation();
+    fn();
+  }
 
   function clampPosition(nx: number, ny: number) {
     const maxX = Math.max(MARGIN, window.innerWidth - PANEL_W - MARGIN);
@@ -120,37 +223,90 @@
 >
   <div class="handle" on:pointerdown={startDrag}>
     <MoveIcon size="16" />
-    <span>Numpad</span>
+    <div class="tabs">
+      <button
+        class="tab"
+        class:active={page === "pad"}
+        on:pointerdown={(event) => tap(event, () => (page = "pad"))}
+      >
+        123
+      </button>
+      <button
+        class="tab"
+        class:active={page === "calc"}
+        on:pointerdown={(event) => tap(event, () => (page = "calc"))}
+      >
+        Calc
+      </button>
+    </div>
     <button
       class="close"
       title="Hide numpad"
-      on:pointerdown={(event) => {
-        if (event.button !== 0) return;
-        event.preventDefault();
-        event.stopPropagation();
-        dispatch("close");
-      }}
+      on:pointerdown={(event) => tap(event, () => dispatch("close"))}
     >
       <XIcon size="16" />
     </button>
   </div>
 
-  <div class="keys">
-    {#each rows as row}
-      <div class="key-row" style:grid-template-columns={`repeat(${row.length}, minmax(0, 1fr))`}>
-        {#each row as key}
-          <button
-            class="key"
-            class:wide={key === "Enter" || key === "Backspace"}
-            title={key}
-            on:pointerdown={(event) => press(key, event)}
-          >
-            {key === "Backspace" ? "Bksp" : key}
-          </button>
+  {#if page === "pad"}
+    <div class="keys">
+      {#each rows as row}
+        <div class="key-row" style:grid-template-columns={`repeat(${row.length}, minmax(0, 1fr))`}>
+          {#each row as key}
+            <button
+              class="key"
+              class:wide={key === "Enter" || key === "Backspace"}
+              title={key}
+              on:pointerdown={(event) => press(key, event)}
+            >
+              {key === "Backspace" ? "Bksp" : key}
+            </button>
+          {/each}
+        </div>
+      {/each}
+    </div>
+  {:else}
+    <div class="calc">
+      <div class="display" title={calcEntry}>{calcEntry}</div>
+      <div class="calc-grid">
+        {#each calcRows as row}
+          {#each row as k}
+            <button
+              class="key calc-key"
+              class:op={OPS.includes(k)}
+              class:eq={k === "="}
+              class:util={k === "C" || k === "⌫"}
+              title={k}
+              on:pointerdown={(event) => tap(event, () => calcKey(k))}
+            >
+              {k}
+            </button>
+          {/each}
         {/each}
+        <button
+          class="key calc-key zero"
+          title="0"
+          on:pointerdown={(event) => tap(event, () => calcKey("0"))}
+        >
+          0
+        </button>
+        <button
+          class="key calc-key"
+          title="."
+          on:pointerdown={(event) => tap(event, () => calcKey("."))}
+        >
+          .
+        </button>
+        <button
+          class="key calc-key send"
+          title="Send result to terminal"
+          on:pointerdown={(event) => tap(event, calcSend)}
+        >
+          ↵
+        </button>
       </div>
-    {/each}
-  </div>
+    </div>
+  {/if}
 </div>
 
 <style lang="postcss">
@@ -169,6 +325,47 @@
 
   .close {
     @apply ml-auto rounded-md p-1 text-zinc-400 hover:bg-zinc-700 hover:text-white active:bg-indigo-600;
+  }
+
+  .tabs {
+    @apply flex gap-1;
+  }
+  .tab {
+    @apply rounded px-2 py-0.5 text-xs font-semibold text-zinc-400 hover:bg-zinc-700 hover:text-zinc-100;
+  }
+  .tab.active {
+    @apply bg-indigo-600 text-white;
+  }
+
+  .calc {
+    @apply flex flex-col gap-2 p-3;
+  }
+  .display {
+    @apply flex h-12 items-center justify-end overflow-hidden rounded-lg bg-zinc-950 px-3 font-mono text-2xl text-zinc-100;
+  }
+  .calc-grid {
+    @apply grid grid-cols-4 gap-2;
+  }
+  .calc-key {
+    @apply h-12 rounded-lg bg-zinc-800 text-lg font-semibold text-zinc-100 shadow-sm;
+    @apply hover:bg-zinc-700 active:bg-indigo-600 active:text-white;
+    @apply focus:outline-none focus:ring-2 focus:ring-indigo-500/70;
+    touch-action: manipulation;
+  }
+  .calc-key.op {
+    @apply bg-zinc-700 text-indigo-300;
+  }
+  .calc-key.util {
+    @apply text-zinc-400;
+  }
+  .calc-key.eq {
+    @apply bg-indigo-600 text-white;
+  }
+  .calc-key.send {
+    @apply bg-emerald-700 text-white hover:bg-emerald-600;
+  }
+  .calc-key.zero {
+    grid-column: span 2;
   }
 
   .keys {
@@ -199,6 +396,12 @@
     }
     .key.wide {
       @apply text-base;
+    }
+    .calc-key {
+      @apply h-14 text-xl;
+    }
+    .display {
+      @apply h-14 text-3xl;
     }
   }
 </style>
