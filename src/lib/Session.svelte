@@ -81,6 +81,9 @@
   const TERM_MIN_COLS = 32;
   const TERM_MAX_ROWS = 200;
   const TERM_MAX_COLS = 500;
+  const DEFAULT_PORTRAIT_COLS = 60;
+  const DEFAULT_PORTRAIT_ROWS = 52;
+  const PENDING_CREATE_TTL_MS = 10000;
 
   function getConstantOffset() {
     return [
@@ -220,6 +223,7 @@
   // Set when we joined a fresh empty session before write-perms were known, so
   // the auto-create can fire once canWrite arrives (handleCreate needs canEdit).
   let autoCreatePending = false;
+  let pendingPortraitCreates: { x: number; y: number; expiresAt: number }[] = [];
 
   // ── maw share workboard extensions ──
   let boardItems: BoardItem[] = [];
@@ -356,6 +360,7 @@
             remoteVideos = restVideos;
           }
         } else if (message.shells) {
+          const previousShellIds = new Set(shells.map(([id]) => id));
           shells = message.shells;
           if (movingIsDone) {
             moving = -1;
@@ -376,6 +381,7 @@
               srocket?.send({ subscribe: [id, chunknums[id]] });
             }
           }
+          applyPendingPortraitDefaults(message.shells, previousShellIds);
         } else if (message.hear) {
           const [uid, name, msg] = message.hear;
           chatMessages.push({ uid, name, msg, sentAt: new Date() });
@@ -477,6 +483,52 @@
 
   let counter = 0n;
 
+  function rememberPendingPortraitCreate(x: number, y: number) {
+    pendingPortraitCreates = [
+      ...pendingPortraitCreates,
+      { x, y, expiresAt: Date.now() + PENDING_CREATE_TTL_MS },
+    ];
+  }
+
+  function applyPendingPortraitDefaults(
+    nextShells: [number, WsWinsize][],
+    previousShellIds: Set<number>,
+  ) {
+    if (!canEdit || pendingPortraitCreates.length === 0) return;
+
+    const now = Date.now();
+    const pending = pendingPortraitCreates.filter((p) => p.expiresAt > now);
+    const created = nextShells.filter(([sid]) => !previousShellIds.has(sid));
+    if (created.length === 0) {
+      pendingPortraitCreates = pending;
+      return;
+    }
+
+    for (const [id, ws] of created) {
+      if (pending.length === 0) break;
+      const matchIndex = pending.findIndex(
+        (p) => Math.abs(p.x - ws.x) <= 12 && Math.abs(p.y - ws.y) <= 12,
+      );
+      if (matchIndex === -1) continue;
+      pending.splice(matchIndex, 1);
+      const cols = clampInt(
+        DEFAULT_PORTRAIT_COLS,
+        TERM_MIN_COLS,
+        TERM_MAX_COLS,
+      );
+      const rows = clampInt(
+        DEFAULT_PORTRAIT_ROWS,
+        TERM_MIN_ROWS,
+        TERM_MAX_ROWS,
+      );
+      if (ws.cols !== cols || ws.rows !== rows) {
+        srocket?.send({ move: [id, { ...ws, cols, rows }] });
+      }
+    }
+
+    pendingPortraitCreates = pending;
+  }
+
   async function handleCreate() {
     if (!canEdit) {
       makeToast({
@@ -501,6 +553,7 @@
       height: termWrappers[id].clientHeight,
     }));
     const { x, y } = arrangeNewTerminal(existing);
+    rememberPendingPortraitCreate(x, y);
     srocket?.send({ create: [x, y] });
     touchZoom.moveTo([x, y], INITIAL_ZOOM);
   }
@@ -575,8 +628,33 @@
     }
 
     const text =
-      key === "Enter" ? "\r" : key === "Backspace" ? "\x7f" : key;
+      key === "Enter"
+        ? "\r"
+        : key === "Backspace"
+          ? "\x7f"
+          : key === "ArrowUp"
+            ? "\x1b[A"
+            : key === "ArrowDown"
+              ? "\x1b[B"
+              : key === "ArrowRight"
+                ? "\x1b[C"
+                : key === "ArrowLeft"
+                  ? "\x1b[D"
+                  : key;
     handleInput(target, new TextEncoder().encode(text));
+  }
+
+  function handleNumpadSnap(action: string) {
+    if (!canEdit) {
+      makeToast({ kind: "info", message: "Read-only mode." });
+      return;
+    }
+    const id = shortcutTargetId();
+    if (id === null) {
+      makeToast({ kind: "info", message: "Tap a terminal first." });
+      return;
+    }
+    handleSnapButton(id, action);
   }
 
   // ── Terminal labels (Bo 2026-06-13) ───────────────────────────────────────
@@ -2020,6 +2098,7 @@
   {#if showNumpad}
     <Numpad
       on:press={({ detail }) => handleNumpadPress(detail)}
+      on:snap={({ detail }) => handleNumpadSnap(detail)}
       on:close={() => (showNumpad = false)}
     />
   {/if}

@@ -4,10 +4,14 @@
 
   const STORAGE_KEY = "sshx:numpad-position";
   const PANEL_W = 292;
-  const PANEL_H = 404; // tall enough for the calculator page
+  const PANEL_H = 452; // tall enough for the keypad arrows + snap page
   const MARGIN = 12;
 
-  const dispatch = createEventDispatcher<{ press: string; close: void }>();
+  const dispatch = createEventDispatcher<{
+    press: string;
+    snap: string;
+    close: void;
+  }>();
 
   let x = 0;
   let y = 0;
@@ -21,10 +25,42 @@
     ["4", "5", "6"],
     ["1", "2", "3"],
     ["0", ".", "Enter", "Backspace"],
+    ["ArrowLeft", "ArrowDown", "ArrowUp", "ArrowRight"],
   ];
 
-  // ── Two pages: keypad (sends to terminal) + calculator (Bo 2026-06-13) ──
-  let page: "pad" | "calc" = "pad";
+  const keyLabel: Record<string, string> = {
+    Backspace: "Bksp",
+    ArrowLeft: "←",
+    ArrowDown: "↓",
+    ArrowUp: "↑",
+    ArrowRight: "→",
+  };
+
+  const snapGroups = [
+    [
+      { a: "leftHalf", g: "◧", k: "⌃⌥←", t: "Left half" },
+      { a: "rightHalf", g: "◨", k: "⌃⌥→", t: "Right half" },
+      { a: "topHalf", g: "⬒", k: "⌃⌥↑", t: "Top half" },
+      { a: "bottomHalf", g: "⬓", k: "⌃⌥↓", t: "Bottom half" },
+    ],
+    [
+      { a: "topLeft", g: "◰", k: "⌃⌥U", t: "Top-left quarter" },
+      { a: "topRight", g: "◳", k: "⌃⌥I", t: "Top-right quarter" },
+      { a: "bottomLeft", g: "◱", k: "⌃⌥J", t: "Bottom-left quarter" },
+      { a: "bottomRight", g: "◲", k: "⌃⌥K", t: "Bottom-right quarter" },
+    ],
+    [
+      { a: "maximize", g: "⬜", k: "⌃⌥F", t: "Maximize" },
+      { a: "center", g: "⊡", k: "⌃⌥C", t: "Center" },
+      { a: "firstThird", g: "⅓", k: "⌃⌥1", t: "First third" },
+      { a: "centerThird", g: "⅓", k: "⌃⌥2", t: "Center third" },
+      { a: "lastThird", g: "⅓", k: "⌃⌥3", t: "Last third" },
+      { a: "restore", g: "↩", k: "⌃⌥0", t: "Restore previous layout" },
+    ],
+  ];
+
+  // ── Three pages: keypad + calculator + focused-terminal snap controls ──
+  let page: "pad" | "calc" | "snap" = "pad";
 
   // Classic calculator state machine — evaluates left-to-right like a physical
   // calculator (no operator precedence), so it matches what people expect from
@@ -198,6 +234,13 @@
     dispatch("press", key);
   }
 
+  function snap(action: string, event: PointerEvent) {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    event.stopPropagation();
+    dispatch("snap", action);
+  }
+
   onMount(() => {
     loadPosition();
     window.addEventListener("pointermove", onMove);
@@ -238,6 +281,13 @@
       >
         Calc
       </button>
+      <button
+        class="tab"
+        class:active={page === "snap"}
+        on:pointerdown={(event) => tap(event, () => (page = "snap"))}
+      >
+        Snap
+      </button>
     </div>
     <button
       class="close"
@@ -256,16 +306,17 @@
             <button
               class="key"
               class:wide={key === "Enter" || key === "Backspace"}
+              class:arrow={key.startsWith("Arrow")}
               title={key}
               on:pointerdown={(event) => press(key, event)}
             >
-              {key === "Backspace" ? "Bksp" : key}
+              {keyLabel[key] ?? key}
             </button>
           {/each}
         </div>
       {/each}
     </div>
-  {:else}
+  {:else if page === "calc"}
     <div class="calc">
       <div class="display" title={calcEntry}>{calcEntry}</div>
       <div class="calc-grid">
@@ -305,6 +356,23 @@
           ↵
         </button>
       </div>
+    </div>
+  {:else}
+    <div class="snap">
+      {#each snapGroups as group}
+        <div class="snap-grid">
+          {#each group as s}
+            <button
+              class="snap-key"
+              title={s.t}
+              on:pointerdown={(event) => snap(s.a, event)}
+            >
+              <span class="snap-icon">{s.g}</span>
+              <span class="snap-shortcut">{s.k}</span>
+            </button>
+          {/each}
+        </div>
+      {/each}
     </div>
   {/if}
 </div>
@@ -386,6 +454,32 @@
   .key.wide {
     @apply text-sm;
   }
+  .key.arrow {
+    @apply bg-zinc-700 text-indigo-200;
+  }
+
+  .snap {
+    @apply flex flex-col gap-2 p-3;
+  }
+  .snap-grid {
+    @apply grid grid-cols-4 gap-2;
+  }
+  .snap-key {
+    @apply flex h-14 flex-col items-center justify-center rounded-lg bg-zinc-800 text-zinc-100 shadow-sm;
+    @apply hover:bg-indigo-600 hover:text-white active:bg-indigo-500;
+    @apply focus:outline-none focus:ring-2 focus:ring-indigo-500/70;
+    touch-action: manipulation;
+  }
+  .snap-icon {
+    @apply text-lg leading-none;
+  }
+  .snap-shortcut {
+    @apply mt-1 text-[10px] font-semibold leading-none text-zinc-400;
+  }
+  .snap-key:hover .snap-shortcut,
+  .snap-key:active .snap-shortcut {
+    @apply text-white/80;
+  }
 
   @media (hover: none), (pointer: coarse) {
     .numpad {
@@ -399,6 +493,15 @@
     }
     .calc-key {
       @apply h-14 text-xl;
+    }
+    .snap-key {
+      @apply h-16;
+    }
+    .snap-icon {
+      @apply text-2xl;
+    }
+    .snap-shortcut {
+      @apply text-[11px];
     }
     .display {
       @apply h-14 text-3xl;
