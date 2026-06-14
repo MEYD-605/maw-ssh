@@ -45,6 +45,9 @@ pub struct ServerState {
 
     /// Path to the file containing the active oracle session URL.
     oracle_url_file: String,
+
+    /// Path to the directory containing static assets.
+    static_dir: String,
 }
 
 impl ServerState {
@@ -58,6 +61,9 @@ impl ServerState {
         let oracle_url_file = options
             .oracle_url_file
             .unwrap_or_else(|| "/root/.sshx-oracle-url.txt".to_string());
+        let static_dir = options
+            .static_dir
+            .unwrap_or_else(|| "build".to_string());
         Ok(Self {
             mac: Hmac::new_from_slice(secret.as_bytes()).unwrap(),
             override_origin: options.override_origin,
@@ -65,6 +71,7 @@ impl ServerState {
             store: DashMap::new(),
             mesh,
             oracle_url_file,
+            static_dir,
         })
     }
 
@@ -86,6 +93,11 @@ impl ServerState {
     /// Returns the path to the oracle URL file.
     pub fn oracle_url_file(&self) -> &str {
         &self.oracle_url_file
+    }
+
+    /// Returns the path to the static directory.
+    pub fn static_dir(&self) -> &str {
+        &self.static_dir
     }
 
     /// Lookup a local session by name.

@@ -50,6 +50,9 @@ pub struct ServerOptions {
 
     /// Path to the file containing the active oracle session URL.
     pub oracle_url_file: Option<String>,
+
+    /// Path to the directory containing static assets.
+    pub static_dir: Option<String>,
 }
 
 /// Stateful object that manages the sshx server, with graceful termination.

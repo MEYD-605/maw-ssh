@@ -44,6 +44,10 @@ struct Args {
     /// Path to the file containing the active oracle session URL.
     #[clap(long, env = "SSHX_ORACLE_URL_FILE")]
     oracle_url_file: Option<String>,
+
+    /// Path to the directory containing static assets.
+    #[clap(long, default_value = "build")]
+    static_dir: String,
 }
 
 #[tokio::main]
@@ -60,6 +64,7 @@ async fn start(args: Args) -> Result<()> {
     options.host = args.host;
     options.board_password = args.board_password;
     options.oracle_url_file = args.oracle_url_file;
+    options.static_dir = Some(args.static_dir);
 
     let server = Server::new(options)?;
 

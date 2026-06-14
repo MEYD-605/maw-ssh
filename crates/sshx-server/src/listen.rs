@@ -25,7 +25,7 @@ where
     L: Listener,
     L::Addr: Debug,
 {
-    let http_service = web::app()
+    let http_service = web::app(&state)
         .with_state(state.clone())
         .layer(middleware::from_fn_with_state(
             state.clone(),

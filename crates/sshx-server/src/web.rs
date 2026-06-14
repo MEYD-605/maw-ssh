@@ -27,13 +27,14 @@ pub mod protocol;
 mod socket;
 
 /// Returns the web application server, routed with Axum.
-pub fn app() -> Router<Arc<ServerState>> {
-    let root_spa = ServeFile::new("build/spa.html")
+pub fn app(state: &ServerState) -> Router<Arc<ServerState>> {
+    let static_dir = Path::new(state.static_dir());
+    let root_spa = ServeFile::new(static_dir.join("spa.html"))
         .precompressed_gzip()
         .precompressed_br();
 
     // Serves static SvelteKit build files.
-    let static_files = ServeDir::new("build")
+    let static_files = ServeDir::new(static_dir)
         .precompressed_gzip()
         .precompressed_br()
         .fallback(root_spa);
@@ -42,7 +43,7 @@ pub fn app() -> Router<Arc<ServerState>> {
     // requesting a removed /_app/immutable/* hash gets a 404 (and hard-reloads)
     // instead of SPA HTML served as a JS module (strict-MIME error). These are
     // content-hashed → cache them forever.
-    let app_assets = ServeDir::new("build/_app")
+    let app_assets = ServeDir::new(static_dir.join("_app"))
         .precompressed_gzip()
         .precompressed_br();
 
