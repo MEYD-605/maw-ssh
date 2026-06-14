@@ -2,6 +2,7 @@ use std::{fmt::Debug, future::Future, sync::Arc};
 
 use anyhow::Result;
 use axum::body::Body;
+use axum::middleware;
 use axum::serve::Listener;
 use http::{header::CONTENT_TYPE, Request};
 use sshx_core::proto::{sshx_service_server::SshxServiceServer, FILE_DESCRIPTOR_SET};
@@ -24,8 +25,12 @@ where
     L: Listener,
     L::Addr: Debug,
 {
-    let http_service = web::app()
+    let http_service = web::app(&state)
         .with_state(state.clone())
+        .layer(middleware::from_fn_with_state(
+            state.clone(),
+            web::board_password_gate,
+        ))
         .layer(TraceLayer::new_for_http())
         .into_service()
         .boxed_clone();

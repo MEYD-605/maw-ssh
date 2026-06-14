@@ -248,9 +248,17 @@ async fn handle_socket(socket: &mut WebSocket, session: Arc<Session>) -> Result<
                 send(socket, WsServer::Pong(ts)).await?;
             }
             WsClient::Voice(data) => {
+                if let Err(e) = session.check_write_permission(user_id) {
+                    send(socket, WsServer::Error(e.to_string())).await?;
+                    continue;
+                }
                 session.send_voice(user_id, data);
             }
             WsClient::StreamFrame(stream_id, data) => {
+                if let Err(e) = session.check_write_permission(user_id) {
+                    send(socket, WsServer::Error(e.to_string())).await?;
+                    continue;
+                }
                 session.send_stream_frame(user_id, stream_id, data);
             }
             WsClient::BoardPut(item) => {

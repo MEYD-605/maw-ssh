@@ -4,12 +4,27 @@ use sshx_core::{
     proto::{server_update::ServerMessage, NewShell, TerminalInput},
     Sid, Uid,
 };
-use sshx_server::web::protocol::{WsClient, WsWinsize};
+use sshx_server::{
+    web::protocol::{WsClient, WsWinsize},
+    ServerOptions,
+};
 use tokio::time::{self, Duration};
 
 use crate::common::*;
 
 pub mod common;
+
+fn auth_cookie_from_response(resp: &reqwest::Response) -> String {
+    resp.headers()
+        .get(http::header::SET_COOKIE)
+        .expect("login should set auth cookie")
+        .to_str()
+        .expect("set-cookie should be ASCII")
+        .split(';')
+        .next()
+        .expect("set-cookie should contain a cookie pair")
+        .to_string()
+}
 
 #[tokio::test]
 async fn test_handshake() -> Result<()> {
@@ -280,6 +295,272 @@ async fn test_read_write_permissions() -> Result<()> {
         1,
         "Reader should still see the existing shell"
     );
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_files_api() -> Result<()> {
+    let server = TestServer::new().await;
+    let client = reqwest::Client::new();
+    let test_prefix = format!("sshx_test_{}", server.local_addr().port());
+
+    // 1. Test listing files
+    let url_list = format!("http://{}/api/files?path=", server.local_addr());
+    let resp = client.get(&url_list).send().await?;
+    assert_eq!(resp.status(), http::StatusCode::OK);
+    let text = resp.text().await?;
+    assert!(text.contains("\"path\":"));
+    assert!(text.contains("\"items\":"));
+
+    // Create a temporary file inside /root/maw-workspace to test reading
+    let temp_file_path = std::path::Path::new("/root/maw-workspace/test_hello.txt");
+    tokio::fs::write(&temp_file_path, b"hello workspace file!").await?;
+
+    // 2. Test reading the file
+    let url_read = format!(
+        "http://{}/api/file?path=test_hello.txt",
+        server.local_addr()
+    );
+    let resp = client.get(&url_read).send().await?;
+    assert_eq!(resp.status(), http::StatusCode::OK);
+    assert_eq!(
+        resp.headers().get(http::header::CONTENT_TYPE).unwrap(),
+        "application/json"
+    );
+    assert_eq!(
+        resp.headers().get(http::header::CACHE_CONTROL).unwrap(),
+        "no-cache"
+    );
+    let json_text = resp.text().await?;
+    assert!(json_text.contains("\"path\":\"test_hello.txt\""));
+    assert!(json_text.contains("\"content\":\"hello workspace file!\""));
+
+    // Clean up
+    tokio::fs::remove_file(&temp_file_path).await.ok();
+
+    // 3. Test reading nonexistent file
+    let url_missing = format!(
+        "http://{}/api/file?path=does_not_exist.txt",
+        server.local_addr()
+    );
+    let resp = client.get(&url_missing).send().await?;
+    assert_eq!(resp.status(), http::StatusCode::NOT_FOUND);
+
+    // 4. Test directory traversal attempt
+    let url_traversal = format!("http://{}/api/file?path=../etc/passwd", server.local_addr());
+    let resp = client.get(&url_traversal).send().await?;
+    assert_eq!(resp.status(), http::StatusCode::BAD_REQUEST);
+
+    // 5. Test symlink escape rejection: a harmless-looking name inside the root
+    // must not serve a target outside FILES_ROOT.
+    let symlink_escape_name = format!("{}_symlink_escape.txt", test_prefix);
+    let symlink_escape_path =
+        std::path::PathBuf::from(format!("/root/maw-workspace/{symlink_escape_name}"));
+    tokio::fs::remove_file(&symlink_escape_path).await.ok();
+    std::os::unix::fs::symlink("/etc/passwd", &symlink_escape_path)?;
+    let url_symlink_escape = format!(
+        "http://{}/api/file?path={}",
+        server.local_addr(),
+        symlink_escape_name
+    );
+    let resp = client.get(&url_symlink_escape).send().await?;
+    assert_eq!(resp.status(), http::StatusCode::NOT_FOUND);
+    tokio::fs::remove_file(&symlink_escape_path).await.ok();
+
+    // 6. Test resolved-path credential guard: a public symlink to a restricted
+    // file inside the root must still be blocked after canonicalization.
+    let restricted_target_name = format!("{}_secret_target.txt", test_prefix);
+    let restricted_link_name = format!("{}_public_link.txt", test_prefix);
+    let restricted_target =
+        std::path::PathBuf::from(format!("/root/maw-workspace/{restricted_target_name}"));
+    let restricted_link =
+        std::path::PathBuf::from(format!("/root/maw-workspace/{restricted_link_name}"));
+    tokio::fs::remove_file(&restricted_link).await.ok();
+    tokio::fs::write(&restricted_target, b"secret through symlink").await?;
+    std::os::unix::fs::symlink(&restricted_target, &restricted_link)?;
+    let url_restricted_link = format!(
+        "http://{}/api/file?path={}",
+        server.local_addr(),
+        restricted_link_name
+    );
+    let resp = client.get(&url_restricted_link).send().await?;
+    assert_eq!(resp.status(), http::StatusCode::FORBIDDEN);
+    tokio::fs::remove_file(&restricted_link).await.ok();
+    tokio::fs::remove_file(&restricted_target).await.ok();
+
+    // 7. Test symlinked directory escape rejection on /api/files.
+    let symlink_dir_name = format!("{}_symlink_dir", test_prefix);
+    let symlink_dir_path =
+        std::path::PathBuf::from(format!("/root/maw-workspace/{symlink_dir_name}"));
+    tokio::fs::remove_file(&symlink_dir_path).await.ok();
+    std::os::unix::fs::symlink("/etc", &symlink_dir_path)?;
+    let url_symlink_dir = format!(
+        "http://{}/api/files?path={}",
+        server.local_addr(),
+        symlink_dir_name
+    );
+    let resp = client.get(&url_symlink_dir).send().await?;
+    assert_eq!(resp.status(), http::StatusCode::NOT_FOUND);
+    tokio::fs::remove_file(&symlink_dir_path).await.ok();
+
+    // 8. Test dotfile rejection
+    let dotfile_path = std::path::Path::new("/root/maw-workspace/.test_dotfile");
+    tokio::fs::write(&dotfile_path, b"hidden content").await?;
+    let url_dotfile = format!("http://{}/api/file?path=.test_dotfile", server.local_addr());
+    let resp = client.get(&url_dotfile).send().await?;
+    assert_eq!(resp.status(), http::StatusCode::BAD_REQUEST);
+    tokio::fs::remove_file(&dotfile_path).await.ok();
+
+    // 9. Test directory rejection
+    let temp_dir_path = std::path::Path::new("/root/maw-workspace/test_dir");
+    tokio::fs::create_dir(&temp_dir_path).await?;
+    let url_dir = format!("http://{}/api/file?path=test_dir", server.local_addr());
+    let resp = client.get(&url_dir).send().await?;
+    assert_eq!(resp.status(), http::StatusCode::BAD_REQUEST);
+    tokio::fs::remove_dir(&temp_dir_path).await.ok();
+
+    // 10. Test binary file rejection (invalid UTF-8 bytes)
+    let binary_path = std::path::Path::new("/root/maw-workspace/test_binary.bin");
+    tokio::fs::write(&binary_path, b"hello \xff\xff world").await?;
+    let url_binary = format!(
+        "http://{}/api/file?path=test_binary.bin",
+        server.local_addr()
+    );
+    let resp = client.get(&url_binary).send().await?;
+    assert_eq!(resp.status(), http::StatusCode::BAD_REQUEST);
+    assert_eq!(resp.text().await?, "binary file");
+    tokio::fs::remove_file(&binary_path).await.ok();
+
+    // 11. Test file size > 1 MiB -> 413 Payload Too Large
+    let large_path = std::path::Path::new("/root/maw-workspace/test_large.txt");
+    let large_data = vec![b'a'; 1024 * 1024 + 10];
+    tokio::fs::write(&large_path, &large_data).await?;
+    let url_large = format!(
+        "http://{}/api/file?path=test_large.txt",
+        server.local_addr()
+    );
+    let resp = client.get(&url_large).send().await?;
+    assert_eq!(resp.status(), http::StatusCode::PAYLOAD_TOO_LARGE);
+    tokio::fs::remove_file(&large_path).await.ok();
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_board_password_gate() -> Result<()> {
+    let mut options = ServerOptions::default();
+    options.board_password = Some("test board password".to_string());
+    let server = TestServer::new_with_options(options).await;
+    let client = reqwest::Client::builder()
+        .redirect(reqwest::redirect::Policy::none())
+        .build()?;
+    let base = format!("http://{}", server.local_addr());
+
+    // Browser-facing board routes redirect to the local login page.
+    let resp = client.get(format!("{base}/go")).send().await?;
+    assert_eq!(resp.status(), http::StatusCode::SEE_OTHER);
+    assert_eq!(
+        resp.headers().get(http::header::LOCATION).unwrap(),
+        "/login?next=%2Fgo"
+    );
+
+    let resp = client.get(format!("{base}/s/demo")).send().await?;
+    assert_eq!(resp.status(), http::StatusCode::SEE_OTHER);
+    assert_eq!(
+        resp.headers().get(http::header::LOCATION).unwrap(),
+        "/login?next=%2Fs%2Fdemo"
+    );
+
+    // API and WebSocket paths fail closed instead of redirecting an XHR/WS.
+    let resp = client.get(format!("{base}/api/files?path=")).send().await?;
+    assert_eq!(resp.status(), http::StatusCode::UNAUTHORIZED);
+
+    let resp = client
+        .get(format!("{base}/api/files?path="))
+        .header(
+            http::header::COOKIE,
+            "sshx_board_auth=v1:9999999999:tampered",
+        )
+        .send()
+        .await?;
+    assert_eq!(resp.status(), http::StatusCode::UNAUTHORIZED);
+
+    let resp = client.get(format!("{base}/api/s/demo")).send().await?;
+    assert_eq!(resp.status(), http::StatusCode::UNAUTHORIZED);
+
+    // Wrong passwords do not mint a cookie.
+    let resp = client
+        .post(format!("{base}/login"))
+        .form(&[("password", "wrong"), ("next", "/go")])
+        .send()
+        .await?;
+    assert_eq!(resp.status(), http::StatusCode::UNAUTHORIZED);
+    assert!(resp.headers().get(http::header::SET_COOKIE).is_none());
+
+    // Correct passwords mint a signed, long-lived, browser-safe auth cookie.
+    let resp = client
+        .post(format!("{base}/login"))
+        .form(&[("password", "test board password"), ("next", "/s/demo#key")])
+        .send()
+        .await?;
+    assert_eq!(resp.status(), http::StatusCode::SEE_OTHER);
+    assert_eq!(
+        resp.headers().get(http::header::LOCATION).unwrap(),
+        "/s/demo#key"
+    );
+    let set_cookie = resp
+        .headers()
+        .get(http::header::SET_COOKIE)
+        .unwrap()
+        .to_str()?;
+    assert!(set_cookie.starts_with("sshx_board_auth=v1:"));
+    assert!(set_cookie.contains("Max-Age=2592000"));
+    assert!(set_cookie.contains("HttpOnly"));
+    assert!(set_cookie.contains("Secure"));
+    assert!(set_cookie.contains("SameSite=Lax"));
+    let cookie = auth_cookie_from_response(&resp);
+
+    let resp = client
+        .get(format!("{base}/api/files?path="))
+        .header(http::header::COOKIE, &cookie)
+        .send()
+        .await?;
+    assert_eq!(resp.status(), http::StatusCode::OK);
+
+    let file_name = format!("sshx_auth_test_{}.txt", server.local_addr().port());
+    let file_path = std::path::PathBuf::from(format!("/root/maw-workspace/{file_name}"));
+    tokio::fs::write(&file_path, b"authed file").await?;
+    let resp = client
+        .get(format!("{base}/api/file?path={file_name}"))
+        .header(http::header::COOKIE, &cookie)
+        .send()
+        .await?;
+    assert_eq!(resp.status(), http::StatusCode::OK);
+    assert!(resp.text().await?.contains("\"content\":\"authed file\""));
+    tokio::fs::remove_file(&file_path).await.ok();
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_healthz() -> Result<()> {
+    let mut options = ServerOptions::default();
+    options.board_password = Some("test board password".to_string());
+    let server = TestServer::new_with_options(options).await;
+    let client = reqwest::Client::new();
+    let base = format!("http://{}", server.local_addr());
+
+    let resp = client.get(format!("{base}/api/healthz")).send().await?;
+    assert_eq!(resp.status(), http::StatusCode::OK);
+    assert_eq!(resp.text().await?, "OK");
+
+    let resp = client
+        .get(format!("{base}/api/healthz"))
+        .header(http::header::HOST, "external.domain.com")
+        .send()
+        .await?;
+    assert_eq!(resp.status(), http::StatusCode::FORBIDDEN);
 
     Ok(())
 }

@@ -34,11 +34,20 @@ pub struct ServerState {
     /// Override the origin returned for the Open() RPC.
     override_origin: Option<String>,
 
+    /// Password that gates private board routes, if configured.
+    board_password: Option<String>,
+
     /// A concurrent map of session IDs to session objects.
     store: DashMap<String, Arc<Session>>,
 
     /// Storage and distributed communication provider, if enabled.
     mesh: Option<StorageMesh>,
+
+    /// Path to the file containing the active oracle session URL.
+    oracle_url_file: String,
+
+    /// Path to the directory containing static assets.
+    static_dir: String,
 }
 
 impl ServerState {
@@ -49,11 +58,20 @@ impl ServerState {
             Some(url) => Some(StorageMesh::new(&url, options.host.as_deref())?),
             None => None,
         };
+        let oracle_url_file = options
+            .oracle_url_file
+            .unwrap_or_else(|| "/root/.sshx-oracle-url.txt".to_string());
+        let static_dir = options
+            .static_dir
+            .unwrap_or_else(|| "build".to_string());
         Ok(Self {
             mac: Hmac::new_from_slice(secret.as_bytes()).unwrap(),
             override_origin: options.override_origin,
+            board_password: options.board_password.filter(|p| !p.is_empty()),
             store: DashMap::new(),
             mesh,
+            oracle_url_file,
+            static_dir,
         })
     }
 
@@ -65,6 +83,21 @@ impl ServerState {
     /// Returns the override origin for the Open() RPC.
     pub fn override_origin(&self) -> Option<String> {
         self.override_origin.clone()
+    }
+
+    /// Returns the configured private board password, if enabled.
+    pub fn board_password(&self) -> Option<&str> {
+        self.board_password.as_deref()
+    }
+
+    /// Returns the path to the oracle URL file.
+    pub fn oracle_url_file(&self) -> &str {
+        &self.oracle_url_file
+    }
+
+    /// Returns the path to the static directory.
+    pub fn static_dir(&self) -> &str {
+        &self.static_dir
     }
 
     /// Lookup a local session by name.

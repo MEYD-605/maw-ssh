@@ -219,6 +219,10 @@ export class TouchZoom {
           [y, 0]
         : // scroll = pan vertically (or in any direction on a trackpad)
           [x, y],
+      // 0.5 is the upstream author's intentional trackpad/wheel tuning (orig
+      // commit 6a0b9dd). Wheel/scroll and grab-drag are different input
+      // modalities and are deliberately tuned separately — do NOT "fix" this to
+      // match drag. (Reverted a mis-fix 2026-06-13; Bo: check the original.)
       0.5,
     );
 
@@ -255,7 +259,7 @@ export class TouchZoom {
     const zoomLevel = movement[0] / this.#lastMovement;
     this.#lastMovement = movement[0];
 
-    this.center = Vec.add(this.center, Vec.div(trueDelta, this.zoom * 2));
+    this.center = Vec.add(this.center, Vec.div(trueDelta, this.zoom));
     this.zoom = Vec.clamp(this.zoom * zoomLevel, MIN_ZOOM, MAX_ZOOM);
     this.#moved();
   };
@@ -275,6 +279,7 @@ export class TouchZoom {
     "drag",
     MouseEvent | PointerEvent | TouchEvent | KeyboardEvent
   > = ({ delta, elapsedTime }) => {
+    if (this.isPinching) return;
     if (delta[0] === 0 && delta[1] === 0 && elapsedTime < 200) return;
     this.center = Vec.sub(this.center, Vec.div(delta, this.zoom));
     this.#moved();
@@ -283,9 +288,9 @@ export class TouchZoom {
   destroy() {
     if (this.#node) {
       // @ts-ignore
-      document.addEventListener("gesturestart", this.#preventGesture);
+      document.removeEventListener("gesturestart", this.#preventGesture);
       // @ts-ignore
-      document.addEventListener("gesturechange", this.#preventGesture);
+      document.removeEventListener("gesturechange", this.#preventGesture);
 
       window.removeEventListener("resize", this.#updateBoundsD);
       this.#scrollingAnchor.removeEventListener("scroll", this.#updateBoundsD);

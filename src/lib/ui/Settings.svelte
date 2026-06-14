@@ -10,7 +10,10 @@
   let inputName: string;
   let inputTheme: ThemeName;
   let inputScrollback: number;
+  let inputFontSize: number;
   let inputBackground: string;
+  let inputPanelBackground: string;
+  let inputSnapGap: number;
 
   // Quick board background presets.
   const BG_PRESETS = [
@@ -27,6 +30,11 @@
     updateSettings({ background: value });
   }
 
+  function setPanelBackground(value: string) {
+    inputPanelBackground = value;
+    updateSettings({ panelBackground: value });
+  }
+
   let initialized = false;
   $: open, (initialized = false);
   $: if (!initialized) {
@@ -34,7 +42,10 @@
     inputName = $settings.name;
     inputTheme = $settings.theme;
     inputScrollback = $settings.scrollback;
+    inputFontSize = $settings.fontSize;
     inputBackground = $settings.background;
+    inputPanelBackground = $settings.panelBackground;
+    inputSnapGap = $settings.snapGap;
   }
 </script>
 
@@ -87,8 +98,26 @@
     </div>
     <div class="item">
       <div>
-        <p class="item-title">Background</p>
-        <p class="item-subtitle">Board background color.</p>
+        <p class="item-title">Font size</p>
+        <p class="item-subtitle">Terminal text size ({inputFontSize}px).</p>
+      </div>
+      <div class="flex items-center gap-3 w-52">
+        <input
+          type="range"
+          min="8"
+          max="40"
+          step="1"
+          class="flex-1 accent-indigo-500"
+          bind:value={inputFontSize}
+          on:input={() => updateSettings({ fontSize: Number(inputFontSize) })}
+        />
+        <span class="text-sm text-zinc-300 w-8 text-right">{inputFontSize}</span>
+      </div>
+    </div>
+    <div class="item">
+      <div>
+        <p class="item-title">Board background</p>
+        <p class="item-subtitle">Background color of the board canvas.</p>
       </div>
       <div class="flex flex-col gap-2 items-start">
         <div class="flex gap-1.5 flex-wrap w-52">
@@ -108,6 +137,47 @@
           bind:value={inputBackground}
           on:input={() => setBackground(inputBackground)}
         />
+      </div>
+    </div>
+    <div class="item">
+      <div>
+        <p class="item-title">Panel color</p>
+        <p class="item-subtitle">Toolbar, window headers and menu panels.</p>
+      </div>
+      <div class="flex items-center gap-2 w-52">
+        <input
+          type="color"
+          class="color-input flex-1"
+          value={inputPanelBackground || "#18181b"}
+          on:input={(e) => setPanelBackground(e.currentTarget.value)}
+        />
+        <button
+          class="reset-btn"
+          title="Reset to default"
+          on:click={() => setPanelBackground("")}
+        >
+          Default
+        </button>
+      </div>
+    </div>
+    <div class="item">
+      <div>
+        <p class="item-title">Snap gaps</p>
+        <p class="item-subtitle">
+          Spacing between Rectangle snap regions ({inputSnapGap}px).
+        </p>
+      </div>
+      <div class="flex items-center gap-3 w-52">
+        <input
+          type="range"
+          min="0"
+          max="64"
+          step="2"
+          class="flex-1 accent-indigo-500"
+          bind:value={inputSnapGap}
+          on:input={() => updateSettings({ snapGap: Number(inputSnapGap) })}
+        />
+        <span class="text-sm text-zinc-300 w-8 text-right">{inputSnapGap}</span>
       </div>
     </div>
     <div class="item">
@@ -180,5 +250,10 @@
 
   .color-input {
     @apply w-52 h-9 rounded-md border border-zinc-700 bg-transparent cursor-pointer p-1;
+  }
+
+  .reset-btn {
+    @apply px-2.5 py-1.5 text-xs rounded-md border border-zinc-700 text-zinc-300;
+    @apply hover:bg-white/5 transition-colors whitespace-nowrap;
   }
 </style>

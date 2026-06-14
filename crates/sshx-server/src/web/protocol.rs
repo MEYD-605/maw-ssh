@@ -23,7 +23,11 @@ impl Default for WsWinsize {
         WsWinsize {
             x: 0,
             y: 0,
-            rows: 24,
+            // Taller default so new terminals open portrait-ish (Bo directive
+            // 2026-06-13: "default terminal วินโดวส์ แนวตั้งใหญ่ขึ้น"). Width
+            // unchanged at 80; height bumped 24 -> 40. Per-terminal ▯/▭ presets
+            // still let users override (XTerm.svelte).
+            rows: 40,
             cols: 80,
         }
     }
