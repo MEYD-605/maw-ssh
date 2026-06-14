@@ -1,7 +1,7 @@
 # APK Packaging — Oracle Board (TWA)
 
 Wrap the Oracle Board PWA as a native Android `.apk` using Trusted Web Activity (TWA).
-The app is a thin shell that opens `ssh.clubsxai.com/go` in a Chrome Custom Tab with
+The app is a thin shell that opens `ssh.example.com/go` in a Chrome Custom Tab with
 no browser chrome — it looks and feels like a native app.
 
 ## Prerequisites
@@ -13,7 +13,7 @@ no browser chrome — it looks and feels like a native app.
 ## Option A: PWABuilder (recommended — no local tooling)
 
 1. Go to https://www.pwabuilder.com
-2. Enter `https://ssh.clubsxai.com`
+2. Enter `https://ssh.example.com`
 3. Click **"Package for stores"** → **Android**
 4. Configure:
    - Package name: `com.clubsxai.oracleboard`
@@ -32,10 +32,10 @@ no browser chrome — it looks and feels like a native app.
 ```bash
 npm i -g @nicolo-ribaudo/bubblewrap
 
-bubblewrap init --manifest="https://ssh.clubsxai.com/manifest.webmanifest"
+bubblewrap init --manifest="https://ssh.example.com/manifest.webmanifest"
 # Edit twa-manifest.json:
 #   packageId: com.clubsxai.oracleboard
-#   host: ssh.clubsxai.com
+#   host: ssh.example.com
 #   startUrl: /go
 #   themeColor: #0e0e10
 #   backgroundColor: #0e0e10
@@ -74,10 +74,10 @@ Place at `static/.well-known/assetlinks.json` in this repo. The sshx server
 serves `static/` (via `ServeDir`), so it will be available at:
 
 ```
-https://ssh.clubsxai.com/.well-known/assetlinks.json
+https://ssh.example.com/.well-known/assetlinks.json
 ```
 
-Verify: `curl https://ssh.clubsxai.com/.well-known/assetlinks.json`
+Verify: `curl https://ssh.example.com/.well-known/assetlinks.json`
 
 The file must be served with `Content-Type: application/json`.
 
@@ -89,7 +89,7 @@ adb install app-release-signed.apk
 
 # Verify asset links
 adb shell am start -a android.intent.action.VIEW \
-  -d "https://ssh.clubsxai.com/.well-known/assetlinks.json"
+  -d "https://ssh.example.com/.well-known/assetlinks.json"
 ```
 
 ## Play Store submission
